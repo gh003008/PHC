@@ -43,6 +43,7 @@ import numpy as np
 import random
 import torch
 from phc.utils.flags import flags
+from easydict import EasyDict
 
 SIM_TIMESTEP = 1.0 / 60.0
 
@@ -129,6 +130,7 @@ def load_cfg(args):
 
     # Override config name
     cfg_train["params"]["config"]['name'] = exp_name
+    cfg["exp_name"] = exp_name
 
     if args.epoch > 0:
         cfg_train["params"]["load_checkpoint"] = True
@@ -164,7 +166,7 @@ def load_cfg(args):
 
     cfg["args"] = args
 
-    return cfg, cfg_train, logdir
+    return EasyDict(cfg), cfg_train, logdir
 
 
 def parse_sim_params(args, cfg, cfg_train):

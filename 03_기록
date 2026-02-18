@@ -1,0 +1,65 @@
+[260217 화]
+
+- PHC 환경 세팅
+
+
+- 일단 smpl 모델 가라로 채워 넣음
+data/smpl/SMPL_MALE.pkl (Neutral 복사본)
+data/smpl/SMPL_FEMALE.pkl (Neutral 복사본)
+
+- 가만히 서 있는 좀비 pretrained policy [phc_comp_kp_2]
+conda activate phc
+python phc/run_hydra.py \
+    learning=im_mcp_big \
+    learning.params.network.ending_act=False \
+    exp_name=phc_comp_kp_2 \
+    env.obs_v=7 \
+    env=env_im_getup_mcp \
+    robot=smpl_humanoid \
+    robot.real_weight_porpotion_boxes=False \
+    env.motion_file=sample_data/amass_isaac_standing_upright_slim.pkl \
+    env.models=['output/HumanoidIm/phc_kp_2/Humanoid.pth'] \
+    env.num_prim=3 \
+    env.num_envs=1 \
+    headless=False \
+    epoch=-1 \
+    test=True
+
+- phc에서 제공하는 인간 모델 분석
+분석 문서 참고
+
+- SMPLX_MALE.npz 이런것 없어서 오류
+/home/gunhee/Downloads/models_smplx_v1_1/models/smplx/ 에서 발견
+/home/gunhee/workspace/PHC/data/smpl/ 로 복사해서 해결
+인간 모델 분석이 완료되었고, PHC 환경 및 SMPL-X 모델 정상 동작도 확인
+
+- SMPL-X pretrained policy [phc_x_pnn]
+python phc/run_hydra.py \
+    learning=im_pnn_big \
+    exp_name=phc_x_pnn \
+    env=env_im_x_pnn \
+    robot=smplx_humanoid \
+    env.motion_file=sample_data/standing_x.pkl \
+    env.training_prim=0 \
+    epoch=-1 \
+    test=True \
+    env.num_envs=1 \
+    headless=False
+
+- PHC를 어떻게 확장할지
+- ㄴㄴ PNN은 한번에 여러 가지 동작 대응이 안돼 인간모델을 모사한다고 보기 좀 그래, 그래서 MCP를 쓰자,
+- 일단 지금 이 프레임워크에서 제공하는 걸고 MCP 써서 한번에 여러 모션들을 추종 하는지 확인하고 넘어가야할거 같아, pre trained policy중에 이런거 돌려 볼 수 있는지 봐줘, 예를 들어 에피소드 시작할때 랜덤 reference motion을 넣어줄때 따라가는지, 아니면 상위 명령 (전방으로 속도 몇으로 이동)줘서 그걸 따라가게 보행을 할 수 있는지 등 기본적으로 policy가 보행제어기 수준으로 잘 학습 됐는지 확인하고 진행하고 싶어.
+
+- 그 다음에는 내 연구로 확장하는걸 해볼거야.
+- action space를 확장해야하니까 지금 학습되어있는 policy로 더 이어서 학습은 안될거 같고.. MCP에서 활용한 모션들을 다써서 학습하면 또 오래걸릴거 같단말이지, 내 GPU로 학습 가능한지도 알아봐야할것 같고, 여튼 내 생각엔 action space확장하고 MCP 그대로 써서 학습을 하되, 모션을 전부 다쓰지 말고 1/ 10 정도만 써서 학습을 해보자, 학습도 커리큘럼으로 처음엔 ccf는 freeze 하여서 하다가 나중에 고정을 풀어서 ccf까지 학습하는 식으로 .
+- 이렇게 하면 PHC 에서 조금씩 한단계식 변형해 가면서 나만의 연구로 확장해 나갈수 있지 않을까 싶어.
+- 그리고 모델 myobody 쓰는건 일단 지금은 생각하지 말자. 
+- 이런식으로 구현 가능할지 싹 먼저 점검해주고 너가 깔끔하게 어떻게 진행할지 정리해줘
+
+- 시작 해줘, 그런데 지금PHC에 있는 스크립트들을 활용할거 잖아, 원본 스크립트들은 냅두고 얘네 복사해서 뒤에 _vic 이런식으로 이름 붙이고 이걸 수정해서 사용하는 식으로 진행해줘, 너무 low level에 있는 스크립트들까지 그럴 필요는 없는데, 특히나 상위레벨에서 실행파일이나 그런것들은 좀 이걸 지켜줘.
+- 원본을 수정하게 되면 수정한 부분에 주석과 vic를 위한 수정이라는 표시를 잘 남겨주고, 그래야 나중에 어떤 부분이 바뀌었는지 좀 잘 구별하면서 진행할수 있을거 같아.
+- 그리고 이 내용도 code-command.md에 규칙들로 추가좀 해줘.
+ - 시작하자!
+
+
+

@@ -255,7 +255,7 @@ def main():
         )
         wandb.config.update(cfg, allow_val_change=True)
         wandb.run.name = cfg_env_name
-        wandb.run.save()
+        # wandb.run.save()
 
     cfg_train['params']['seed'] = set_seed(cfg_train['params'].get("seed", -1), cfg_train['params'].get("torch_deterministic", False))
 

@@ -36,6 +36,8 @@ from phc.env.tasks.humanoid_im_mcp_getup import HumanoidImMCPGetup
 from phc.env.tasks.vec_task_wrappers import VecTaskPythonWrapper
 from phc.env.tasks.humanoid_im_demo import HumanoidImDemo
 from phc.env.tasks.humanoid_im_mcp_demo import HumanoidImMCPDemo
+from phc.env.tasks.humanoid_im_mcp_vic import HumanoidImMCPVIC
+
 
 from isaacgym import rlgpu
 
