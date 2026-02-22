@@ -1,0 +1,49 @@
+# PHC Standing Primitive (Single Model) 학습 성공 리포트
+
+## 1. 개요
+본 문서는 PHC(Perceptual Control Hierarchy) 모델의 가장 기초 단계인 단일 프리미티브(Standing) 학습의 성공 사례를 기록합니다. 이 모델은 복잡한 계층 구조(MCP/PNN) 없이 단일 MLP 정책으로 안정적인 기립 자세를 유지하는 데 성공했습니다.
+
+## 2. 학습 설정 및 환경
+
+### 2.1. 환경 설정 (Environment Config)
+*   **태스크**: `HumanoidIm`
+*   **설정 파일**: `phc/data/cfg/env/env_im_basic.yaml`
+*   **주요 매개변수**:
+    *   `num_envs`: 512
+    *   `control_mode`: `isaac_pd`
+    *   `motion_file`: `sample_data/amass_isaac_standing_upright_slim.pkl`
+    *   `episode_length`: 300
+    *   `has_pnn`: `False` (단일 모델 학습)
+
+### 2.2. 학습 설정 (Learning Config)
+*   **설정 파일**: `phc/data/cfg/learning/im_basic.yaml`
+*   **신경망 구조**: [1024, 1024, 512, 512] (MLP)
+*   **학습 파라미터**:
+    *   `learning_rate`: 5e-5
+    *   `minibatch_size`: 2048 (OOM 방지 및 안정성 확보)
+    *   `max_epochs`: 10000
+
+## 3. 학습 결과
+
+*   **최고 보상 (Max Reward)**: **455.2**
+*   **최대 에피소드 길이 (Max Episode Length)**: **512.7** (Target: 300, 시뮬레이션 종료 지점까지 한 번도 넘어지지 않음)
+*   **수렴 속도**: 약 300 Epoch 이후부터 안정궤도 진입, 8800 Epoch에서 디스크 공간 부족으로 중단될 때까지 완벽한 수렴 상태 유지.
+*   **최종 체크포인트**: `output/Humanoid_Basic_Standing_00008800.pth`
+
+## 4. 평가 및 검증 방법 (Evaluation)
+
+학습된 모델을 시각적으로 확인하려면 다음 명령어를 실행합니다:
+
+```bash
+conda activate phc
+python phc/run.py \
+  --task HumanoidIm \
+  --cfg_env phc/data/cfg/env/env_im_basic.yaml \
+  --cfg_train phc/data/cfg/learning/im_basic.yaml \
+  --test \
+  --checkpoint output/Humanoid_Basic_Standing_00008800.pth \
+  --num_envs 1
+```
+
+## 5. 결론 및 향후 활용
+이 모델은 PHC 프레임워크가 현재 시스템 환경(Coordinate System, SMPL Topology 등)에서 이상 없이 작동함을 입증하는 중요한 베이스라인입니다. 이 모델의 가중치는 향후 PNN(Progressive Neural Network)의 첫 번째 컬럼(Standing Specialist)으로 활용될 예정입니다.
