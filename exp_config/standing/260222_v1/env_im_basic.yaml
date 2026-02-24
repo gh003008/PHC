@@ -1,10 +1,10 @@
-project_name: "PHC_Walk_Baseline"
-notes: "Pure PHC Single Primitive Walking Task - Focused on subset"
+project_name: "PHC_Basic_Baseline"
+notes: "Pure PHC Single Primitive Standing Task - Strict Structure"
 
 disable_multiprocessing: False
 
 env:
-  motion_file: "sample_data/amass_isaac_walking_forward.pkl"
+  motion_file: "sample_data/amass_isaac_standing_upright_slim.pkl"
   num_envs: 512
   numEnvs: 512
   env_spacing: 5
@@ -13,40 +13,17 @@ env:
   episodeLength: 300
   is_flag_run: False
   enable_debug_vis: False
-  
+
   fut_tracks: False
+  self_obs_v: 1
   obs_v: 6
-  auto_pmcp: False
-  auto_pmcp_soft: True
 
-  ######## PNN Configs ########
-  has_pnn: False
-  fitting: False
-  num_prim: 1
-  training_prim: 0
-  actors_to_load: 0
-  has_lateral: False
-
-  ######## Getup Configs ########
-  zero_out_far: True
-  zero_out_far_train: False
-  cycle_motion: True
-  getup_udpate_epoch: 1000
-  getup_schedule: False
-  recoverySteps: 90
-  zero_out_far_steps: 90
-  recoveryEpisodeProb: 0.5
-  fallInitProb: 0.3
-  hard_negative: False
-
-  z_activation: "silu"
   kp_scale: 1
   power_reward: True
-  power_coefficient: 0.00005
-  shape_resampling_interval: 500
-
-  controlFrequencyInv: 2  # 30 Hz
-  stateInit: "Random"
+  control_mode: "isaac_pd"
+  power_scale: 1.0
+  controlFrequencyInv: 2 # 30 Hz
+  stateInit: "Random"  
   hybridInitProb: 0.5
   numAMPObsSteps: 10
 
@@ -54,9 +31,7 @@ env:
   root_height_obs: True
   key_bodies: ["R_Ankle", "L_Ankle", "R_Wrist", "L_Wrist"]
   contact_bodies: ["R_Ankle", "L_Ankle", "R_Toe", "L_Toe"]
-  reset_bodies: ['Pelvis', 'L_Hip', 'L_Knee', 'R_Hip', 'R_Knee', 'Torso', 'Spine', 
-                 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 
-                 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
+  reset_bodies: ['Pelvis', 'L_Hip', 'L_Knee', 'R_Hip', 'R_Knee', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
   terminationHeight: 0.15
   enableEarlyTermination: True
   terminationDistance: 0.25
@@ -64,12 +39,17 @@ env:
   numTrajSamples: 3
   trajSampleTimestepInv: 3
   enableTaskObs: True
-  trackBodies: ["R_Ankle", "L_Ankle", "R_Wrist", "L_Wrist"]
 
   plane:
     staticFriction: 1.0
     dynamicFriction: 1.0
     restitution: 0.0
+
+######## PNN Configs (Disabled for Single Primitive) ########
+has_pnn: False
+fitting: False
+num_prim: 1
+models: []
 
 robot:
   humanoid_type: smpl
