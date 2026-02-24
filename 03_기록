@@ -62,4 +62,12 @@ python phc/run_hydra.py \
  - 시작하자!
 
 
+[260218 수]
+- 학습 명령어 (아직 실패 )
+python phc/run.py \
+    --task HumanoidImMCPVIC \
+    --cfg_env phc/data/cfg/env/env_im_mcp_vic.yaml \
+    --cfg_train phc/data/cfg/learning/im_mcp_vic.yaml \
+    --motion_file phc/data/amass/pkls/amass_isaac_standing_upright_slim.pkl \
+    --headless --no_virtual_display
 

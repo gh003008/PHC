@@ -23,10 +23,21 @@ class HumanoidImMCP(humanoid_im.HumanoidIm):
         super().__init__(cfg=cfg, sim_params=sim_params, physics_engine=physics_engine, device_type=device_type, device_id=device_id, headless=headless)
 
         if self.has_pnn:
-            assert (len(self.models_path) == 1)
-            pnn_ck = torch_ext.load_checkpoint(self.models_path[0])
-            self.pnn = load_pnn(pnn_ck, num_prim = self.num_prim, has_lateral = self.has_lateral, activation = self.z_activation, device = self.device)
-            self.running_mean, self.running_var = pnn_ck['running_mean_std']['running_mean'], pnn_ck['running_mean_std']['running_var']
+            if len(self.models_path) > 0:
+                pnn_ck = torch_ext.load_checkpoint(self.models_path[0])
+                self.pnn = load_pnn(pnn_ck, num_prim = self.num_prim, has_lateral = self.has_lateral, activation = self.z_activation, device = self.device)
+                self.running_mean, self.running_var = pnn_ck['running_mean_std']['running_mean'], pnn_ck['running_mean_std']['running_var']
+            else:
+                # Random Init for Scratch Training
+                mlp_args = {'input_size': self.num_obs, 'units': [1024, 512], 'activation': self.z_activation, 'dense_func': torch.nn.Linear}
+                # PNN output should be num_dof (69 typically)
+                # self._num_actions was overwritten to num_prim, so use self.num_dof is safer if available, or calculate from dof_names
+                output_size = len(self._dof_names) * 3 if not (self.humanoid_type in ['h1', 'g1']) else len(self._dof_names)
+                
+                self.pnn = PNN(mlp_args, output_size=output_size, numCols=self.num_prim, has_lateral=self.has_lateral)
+                self.pnn.to(self.device)
+                self.running_mean = torch.zeros(self.num_obs, device=self.device)
+                self.running_var = torch.ones(self.num_obs, device=self.device)
         
         if self.mlp_bypass:
             self.mlp_model = MLP(input_dim = self.num_obs, output_dim=self.num_dof, units = [2048, 1024, 512], activation = "silu")

@@ -1,0 +1,32 @@
+# 코드 구현 및 설정 오류 분석 (26-02-18)
+
+## 1. 개요
+VIC(Variable Impedance Control) 및 PHC 프레임워크 확장 과정에서 발생한 코드 구현 에러와 설정 파일(Config) 관련 이슈를 분석합니다.
+
+## 2. 주요 에러 분석 및 해결
+
+### 2.1. 설정 파일 (Config) 관련 오류
+*   **TypeError: 'str' object does not support item assignment**
+    *   **원인**: `env.yaml` 내부에 `task: HumanoidIm` 키가 존재하여, `cfg['task']`가 딕셔너리가 아닌 문자열로 파싱됨. 이후 코드에서 `cfg['task']['randomize']`와 같이 접근하려다 발생.
+    *   **해결**: Config 파일에서 `task` 키를 제거 (실행 인자로 전달되므로 불필요).
+*   **KeyError: 'env', 'numEnvs'**
+    *   **원인**: PHC 코드는 `env` 블록 내부에서 설정을 읽으려 하나, 새로 작성한 YAML 파일이 Flat한 구조였음. 또한 `num_envs`(SnakeCase)와 `numEnvs`(CamelCase)의 혼용 문제 발생.
+    *   **해결**: 모든 설정을 `env:` 블록 아래로 이동시키고, 필수적인 CamelCase 키들을 추가함.
+*   **AttributeError: 'dict' object has no attribute 'sim'**
+    *   **원인**: `config.py`에서 YAML을 로드할 때 일반 `dict`를 반환하여, 코드의 dot notation 접근이 실패함.
+    *   **해결**: 반환 시 `EasyDict`로 래핑하도록 수정.
+*   **AttributeError (step_dt, domain_rand 등)**
+    *   **원인**: 순정 PHC 태스크 클래스들이 기대하는 필수 설정 키들이 누락됨.
+    *   **해결**: `sim`, `domain_rand` 등 필수 블록과 하위 키들을 검증된 템플릿 기준으로 보강함.
+
+### 2.2. 코드/로직 관련 오류
+*   **AttributeError: 'p_gains' 부재**
+    *   **원인**: `isaac_pd` 모드 사용 시 Base Class에서 `p_gains`를 초기화하지 않는 경우가 발생.
+    *   **해결**: 초기화 루틴(`_setup_character_props`)에서 `p_gains` 부재 시 기본값으로 설정하는 로직 추가.
+*   **Stiffness 제어 불가 (isaac_pd 제약)**
+    *   **원인**: Isaac Gym 내장 PD 제어기는 시뮬레이션 중 동적으로 Gain을 바꾸는 것이 제한적임.
+    *   **해결**: `control_mode`를 `pd`로 설정하고 Python 레벨에서 Torque를 직접 계산하여 강성 변조를 가능하게 함.
+
+## 3. 결론
+프레임워크의 엄격한 설정 구조와 명명 규칙을 준수하지 않아 발생한 시행착오들입니다. 
+새로운 태스크나 환경 구축 시에는 반드시 검증된 순정 `env_im.yaml` 또는 `env_im_mcp.yaml`의 구조를 템플릿으로 사용해야 합니다.

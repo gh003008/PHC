@@ -41,7 +41,7 @@ python phc/run.py \
   --cfg_env phc/data/cfg/env/env_im_basic.yaml \
   --cfg_train phc/data/cfg/learning/im_basic.yaml \
   --test \
-  --checkpoint output/Humanoid_Basic_Standing_00008800.pth \
+  --checkpoint output/Humanoid_Basic_Standing_00008700.pth \
   --num_envs 1
 ```
 

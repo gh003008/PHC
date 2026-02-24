@@ -5,9 +5,9 @@ notes:  "VIC Implementation with MCP"
 disable_multiprocessing: False
 
 env:
-  motion_file: ""
-  num_envs: 1024
-  numEnvs: 1024
+  motion_file: "sample_data/amass_isaac_standing_upright_slim.pkl"
+  num_envs: 512
+  numEnvs: 512
   env_spacing: 2
   envSpacing: 2
   episode_length: 300
@@ -16,7 +16,7 @@ env:
   enable_debug_vis: False
   sym_loss_coef: 1
   fut_tracks: False
-  obs_v: 6
+  obs_v: 3
   auto_pmcp: False
   auto_pmcp_soft: True
 
@@ -51,7 +51,7 @@ env:
   cycle_motion: True
   getup_udpate_epoch: 1000
 
-  getup_schedule: True
+  getup_schedule: False
   recoverySteps: 90
   zero_out_far_steps: 90
   recoveryEpisodeProb: 0.5
@@ -100,6 +100,7 @@ robot:
 control:
   control_mode: "pd"
   powerScale: 1.0
+  action_scale: 0.5
 
 domain_rand:
   has_domain_rand: False

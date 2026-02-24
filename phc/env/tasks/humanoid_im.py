@@ -48,7 +48,7 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
 
         self.load_humanoid_configs(cfg)
         self.cfg = cfg
-        self.num_envs = cfg["env"]["num_envs"]
+        self.num_envs = cfg["env"].get("num_envs", cfg["env"].get("numEnvs")) # ZL: Use both keys for consistency
         self.device_type = cfg.get("device_type", "cuda")
         self.device_id = cfg.get("device_id", 0)
         self.headless = cfg["headless"]
@@ -213,16 +213,15 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
     def render(self, sync_frame_time = False, i = 0):
         super().render(sync_frame_time=sync_frame_time)
         
-        if self.viewer_o3d and self.control_i == 0:
+        if self.viewer_o3d and i == 0:
             if self.humanoid_type in ["smpl", "smplh", "smplx"]:
-                assert(self._rigid_body_rot.shape[0] == 1)
                 if self._has_upright_start:
-                    body_quat = self._rigid_body_rot
-                    root_trans = self._rigid_body_pos[:, 0, :]
+                    body_quat = self._rigid_body_rot[0:1] # ZL: Only visualize the first environment
+                    root_trans = self._rigid_body_pos[0:1, 0, :]
                     
                     if self.vis_ref and len(self.ref_motion_cache['dof_pos']) == self.num_envs:
-                        ref_body_quat = self.ref_motion_cache['rb_rot']
-                        ref_root_trans = self.ref_motion_cache['root_pos']
+                        ref_body_quat = self.ref_motion_cache['rb_rot'][0:1]
+                        ref_root_trans = self.ref_motion_cache['root_pos'][0:1]
                         
                         body_quat = torch.cat([body_quat, ref_body_quat])
                         root_trans = torch.cat([root_trans, ref_root_trans])
@@ -237,15 +236,15 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
                     pose_aa = sRot.from_quat(local_rot.reshape(-1, 4).numpy()).as_rotvec().reshape(N, -1, 3)
                     pose_aa = torch.from_numpy(pose_aa[:, self.mujoco_2_smpl, :].reshape(N, -1)).cuda()
                 else:
-                    dof_pos = self._dof_pos
-                    root_trans = self._rigid_body_pos[:, 0, :]
-                    root_rot = self._rigid_body_rot[:, 0, :]
+                    dof_pos = self._dof_pos[0:1] # ZL: Only visualize the first environment
+                    root_trans = self._rigid_body_pos[0:1, 0, :]
+                    root_rot = self._rigid_body_rot[0:1, 0, :]
                     pose_aa = torch.cat([torch_utils.quat_to_exp_map(root_rot), dof_pos], dim=1).reshape(1, -1)
 
                     if self.vis_ref and len(self.ref_motion_cache['dof_pos']) == self.num_envs:
-                        ref_dof_pos = self.ref_motion_cache['dof_pos']
-                        ref_root_rot = self.ref_motion_cache['rb_rot'][:, 0, :]
-                        ref_root_trans = self.ref_motion_cache['root_pos']
+                        ref_dof_pos = self.ref_motion_cache['dof_pos'][0:1]
+                        ref_root_rot = self.ref_motion_cache['rb_rot'][0:1, 0, :]
+                        ref_root_trans = self.ref_motion_cache['root_pos'][0:1]
                         
                         ref_pose_aa = torch.cat([torch_utils.quat_to_exp_map(ref_root_rot), ref_dof_pos], dim=1)
                         

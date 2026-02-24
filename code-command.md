@@ -5,7 +5,7 @@
 
 ## Documentation
 - 분석 요청이 들어오면 `01_research_docs` 폴더에 `YYMMDD_topic_analysis.md` 형식으로 문서를 작성한다.
-- 문서의 내용은 항상 한글로 작성한다.
+- 문서의 내용은 항상 한글로 작성하며, `.txt` 파일 작성 시 `**`와 같은 마크다운 강조 기호를 사용하지 않는다.
 - 작성된 문서의 내용은 `code-command.md`에 요약하여 추가하지 않는다. (규칙만 추가함)
 
 ## VIC (Variable Impedance Control) Implementation

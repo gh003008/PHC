@@ -1,0 +1,77 @@
+[260218_vic_implementation_debugging_log_02]
+
+작성일자: 2026-02-18
+작성자 (Agent): PHC VIC Implementation Analyst
+
+1. 현재 진행 상황 요약
+----------------------------------------
+- "VIC (Variable Impedance Control) 구현 및 1차 디버깅 완료"
+- 현재 학습 코드가 에러 없이 돌아가는 상태까지 왔습니다.
+- Stage 1 (Kinematics 학습) 단계이며, 아직 Stiffness(강성) 학습은 비활성화 상태입니다.
+- 사용자가 직접 시각화를 확인하며 실행할 수 있도록 배경(background)에서 돌던 학습은 종료했습니다.
+
+2. PHC 프레임워크 수정 및 구조 설명
+----------------------------------------
+PHC (Physically plausible Humanoid Control) 프레임워크는 기본적으로 다음과 같은 구조를 가집니다:
+[Humanoid] -> [HumanoidAMP] -> [HumanoidIm] -> [HumanoidImMCP]
+
+제가 작업한 내용은 이 구조 위에 VIC 기능을 얹기 위해, 기존 코드를 직접 수정하지 않고
+새로운 파생 클래스(HumanoidVIC, HumanoidImMCPVIC)를 만들어 기능을 확장한 것입니다.
+
+(1) 수정된 스크립트 및 클래스
+    
+    A. phc/env/tasks/humanoid_vic.py (새로 생성)
+       - 역할: VIC의 핵심 물리 엔진 로직을 담당합니다.
+       - 상속: HumanoidIm (기존 PHC의 모방 학습 태스크)
+       - 주요 변경 사항:
+         1. _setup_character_props 함수:
+            - 로봇의 관절 제어기(Gain)를 초기화합니다.
+            - 기존에는 위치(Position) 제어만 했지만, VIC를 위해 강성(Stiffness) 제어가 가능하도록 Action Space를 확장했습니다.
+            - (기존 Action Size) -> (기존 Action Size * 2) : 절반은 위치 제어, 절반은 강성 제어용.
+         
+         2. _physics_step 함수 (핵심):
+            - 시뮬레이션이 한 스텝 돌아가기 직전에 호출됩니다.
+            - 정책(Policy) 신경망이 뱉어낸 Action을 해석합니다.
+            - 앞부분 절반은 관절 목표 위치로 사용하고, 뒷부분 절반은 Stiffness(강성) 값으로 변환합니다.
+            - 변환된 강성 값을 시뮬레이터의 PD 제어기(Gain p, d)에 실시간으로 반영합니다.
+            
+         3. _compute_reward 함수:
+            - 대사 에너지 효율성(Metabolic Cost) 보상을 추가했습니다.
+            - 로봇이 너무 뻣뻣하게(높은 Stiffness) 움직이면 벌점(Penalty)을 줘서, 부드럽게 움직이도록 유도합니다.
+
+    B. phc/env/tasks/humanoid_im_mcp_vic.py (새로 생성)
+       - 역할: MCP (Multi-Control Primitives, 여러 동작 프리미티브를 섞어 쓰는 기술)와 VIC를 결합.
+       - 상속: HumanoidImMCP (기존 MCP 구현체) + HumanoidVIC (위에서 만든 VIC 구현체)
+       - 주요 변경 사항:
+         - 다중 상속을 통해 HumanoidImMCP의 신경망 구조(PNN/MoE)와 HumanoidVIC의 물리 제어 로직을 합쳤습니다.
+         - 이를 통해 "다양한 동작을 섞어 쓰면서도(MCP), 상황에 맞게 몸의 힘을 빼고 주는(VIC)" 제어가 가능해집니다.
+
+    C. 설정 파일 (Config)
+       - phc/data/cfg/env/env_im_mcp_vic.yaml:
+         - has_variable_stiffness: True (VIC 켜기)
+         - learn_stiffness: False (Stage 1에서는 끔, Stage 2에서 켤 예정)
+         - metabolic_cost_w: 0.0 (Stage 1에서는 0, Stage 2에서 올릴 예정)
+         - motion_file: 모션 데이터 경로 수정 완료
+
+3. 왜 이렇게 수정했는가? (연구 구현 의도)
+----------------------------------------
+Q. 단순 디버깅인가요?
+A. 아닙니다. "가변 임피던스 제어(VIC) 연구 기능 구현"이 주 목적입니다.
+   - 기존 PHC는 고정된 강성(Fixed Stiffness)으로만 로봇을 제어했습니다.
+   - 하지만 사람은 걷거나 뛸 때, 혹은 멈출 때 관절의 힘(Stiffness)을 유동적으로 조절합니다.
+   - 이를 모사하기 위해, 신경망이 매 순간 "어디로 움직일지"뿐만 아니라 "얼마나 세게 버틸지"도 결정하도록 만든 것입니다.
+
+Q. 디버깅 차원에서 수정한 것은?
+   - 모션 데이터 경로가 잘못 잡혀있던 것을 수정 (FileNotFoundError 해결).
+   - 초기 Gain 값(p_gains, d_gains)이 없어서 에러가 나던 것을, 안전하게 기본값으로 초기화하는 코드 추가.
+   - 코드가 복잡하게 꼬여있던 것을 상속 구조(Inheritance) 정리를 통해 깔끔하게 만듦.
+
+4. 실행 방법 (사용자 직접 실행용)
+----------------------------------------
+이제 아래 명령어를 터미널에 입력하면 시각화 창(Viewer)이 뜨면서 학습이 시작됩니다.
+눈으로 로봇이 움직이는 것을 확인하실 수 있습니다.
+
+명령어:
+python phc/run.py --task HumanoidImMCPVIC --cfg_env phc/data/cfg/env/env_im_mcp_vic.yaml --cfg_train phc/data/cfg/learning/im_mcp_vic.yaml --no_log
+
+(참고: --headless 옵션을 뺐으므로 창이 뜹니다. --no_log 옵션은 WandB 기록을 끄는 옵션입니다. 기록을 원하시면 빼시면 됩니다.)

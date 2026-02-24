@@ -1,0 +1,40 @@
+PHC 강화학습(RL) 기본 설정 및 스크립트 구조 분석 (260223)
+
+1. 강화학습 주요 요소별 담당 스크립트
+
+- 관측값 (Observation):
+    - 베이스: phc/env/tasks/humanoid.py -> _compute_observations
+    - 모방학습용: phc/env/tasks/humanoid_im.py -> _compute_observations
+- 액션 (Action):
+    - 설정: phc/env/tasks/humanoid.py -> _apply_actions, _action_to_pd_targets
+- 보상 (Reward):
+    - 모방학습용: phc/env/tasks/humanoid_im.py -> _compute_reward
+- 종료 조건 및 리셋 (Termination/Reset):
+    - phc/env/tasks/humanoid.py -> _compute_reset, reset
+
+2. 요소별 상세 세팅 내용 (현재 기준)
+
+관측값 (Observation):
+- 자기 수용 감각: 현재 몸체의 위치, 회전, 선속도, 각속도와 모든 관절의 각도 및 속도를 포함합니다.
+- 모방 타겟 정보: 현재 시점 또는 미래 시점의 모션 데이터(AMASS 등) 상의 목표 자세 정보를 입력받습니다.
+- 특징: Isaac Gym의 텐서를 직접 읽어와 Policy 신경망의 입력 벡터로 변환합니다.
+
+액션 (Action):
+- 제어 방식: PD 제어기(isaac_pd)를 기반으로 합니다.
+- 내용: 각 관절의 목표 각도(Target Joint Angles)를 출력합니다.
+- 변환: 신경망의 출력값(-1 ~ 1)에 스케일과 오프셋을 곱하여 실제 시뮬레이션 상의 목표 각도로 변환합니다.
+
+보상 (Reward):
+- 위치 보상(Pos): 실제 몸체 부위와 모션 데이터상 위치의 오차를 바탕으로 계산합니다. (가장 중요)
+- 회전 보상(Rot): 몸체 부위의 회전(Quaternion) 오차를 계산합니다.
+- 속도 보상(Vel/Ang_vel): 관절 및 몸체의 선속도, 각속도 오차를 반영합니다.
+- 에너지 페널티: 과도한 힘을 쓰지 않도록 토크 사용량에 대한 페널티를 주기도 합니다. (power_reward 설정 시)
+
+종료 및 리셋 조건 (Termination):
+- 추락 종료(Early Termination): 몸체(Root)의 높이가 설정값(기본 0.15m) 이하로 떨어지면 넘어졌다고 판단하여 에피소드를 즉시 종료합니다.
+- 시간 종료: 설정된 최대 에피소드 길이(현재 300 Step, 약 10초)에 도달하면 리셋됩니다.
+- 초기화(RSI): 리셋 시 무작위 모션 시점(Random State Initialization)에서 시작하여 학습 효율을 높입니다.
+
+3. 설정 변경 방법
+- 환경 설정: phc/data/cfg/env/ 내의 YAML 파일을 통해 에피소드 길이, 종료 높이, 보상 가중치 등을 수정할 수 있습니다.
+- 학습 설정: phc/data/cfg/learning/ 내의 YAML 파일을 통해 학습률, 신경망 구조 등을 설정합니다.

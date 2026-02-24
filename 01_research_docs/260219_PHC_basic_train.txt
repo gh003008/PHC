@@ -1,0 +1,78 @@
+================================================================
+기본 PHC (MCP) 학습 실행 가이드 (개정판)
+개정일: 2026-02-20
+목적: VIC와의 비교 기준(baseline)이 될 기본 PHC MCP 학습을
+      제대로 돌리고, 정상 동작 여부 및 reward 수준을 확인한다.
+================================================================
+
+[ 현재 상태: Scratch 학습 진행 중 ]
+------------------------------------------------------------
+이전 시도(0-padding, PNN 고정)는 실패했습니다. (Reward 6~8에서 정체)
+원인: PNN 체크포인트(574차원)와 현재 환경(454차원)의 구조적 불일치가 너무 심해,
+      단순 패딩으로는 PNN이 정상 동작하지 않음.
+
+새로운 접근 (현재 진행 중):
+  - fitting: False (PNN 학습 허용)
+  - models: [] (체크포인트 없이 처음부터 학습)
+  - obs 패딩 로직 제거 (원상복구)
+
+이 방식은 PNN과 Composer를 현재 환경(454차원)에 맞춰
+처음부터(Scratch) 학습시키는 "정공법"입니다.
+호환성 문제 없이 가장 확실한 Baseline 성능을 보여줄 것입니다.
+
+
+================================================================
+1. 무엇을 위해 돌리는가?
+================================================================
+(이전과 동일)
+PHC의 PNN(Primitive) + Composer(MCP) 구조가 이 환경에서
+얼마나 잘 동작하는지(Max Reward, 수렴 속도) 확인하기 위함.
+
+
+================================================================
+2. 관련 파일 구조
+================================================================
+  ① 환경 설정 파일 (수정됨)
+     phc/data/cfg/env/env_im_mcp_baseline_test.yaml
+       - obs_v: 6
+       - fut_tracks: False (task_obs=96, total=454차원)
+       - fitting: False    (★ 핵심 변경: PNN도 같이 학습)
+       - models: []        (★ 핵심 변경: 체크포인트 안 씀)
+       - control_mode: "isaac_pd"
+
+  ② 학습 설정 파일
+     phc/data/cfg/learning/im_mcp_baseline_test.yaml
+       - minibatch_size: 4096 (메모리 절약)
+
+
+================================================================
+3. 실행 명령어 (Scratch Training)
+================================================================
+
+  conda activate phc
+  cd /home/gunhee/workspace/PHC
+
+  python phc/run.py \
+    --task HumanoidImMCP \
+    --cfg_env phc/data/cfg/env/env_im_mcp_baseline_test.yaml \
+    --cfg_train phc/data/cfg/learning/im_mcp_baseline_test.yaml \
+    --headless \
+    2>&1 | tee /tmp/mcp_baseline_scratch.log
+
+기대 결과:
+  - 초기에는 넘어지지만(rewards 낮음),
+  - 에포크가 진행됨에 따라(100~500 epoch) rewards가 10~20 이상으로 상승.
+  - episode_length가 100 step 이상으로 증가.
+
+
+
+(이전 실패 원인 분석 내용은 260221_training_failure_analysis.txt로 통합되었습니다.)
+
+
+================================================================
+5. WandB 모니터링 주소
+================================================================
+  https://wandb.ai/gh003008-korea-advanced-institute-of-science-and-technology/PHC_MCP_Baseline
+  Run Name: peachy-sun-16 (현재 돌아가는 중)
+
+================================================================

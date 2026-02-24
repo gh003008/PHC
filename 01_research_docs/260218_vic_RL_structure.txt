@@ -1,0 +1,70 @@
+[260218_vic_RL_structure]
+
+작성일자: 2026-02-18
+작성자 (Agent): PHC VIC Implementation Analyst
+
+1. Model Information (Humanoid)
+----------------------------------------
+- **Model Type**: SMPL (Skinned Multi-Person Linear)
+- **File Format**: MJCF (.xml)
+  - *Location*: `phc/data/assets/mjcf/smpl_humanoid.xml`
+  - *Reason for MJCF*: MuJoCo's native format (MJCF) is often preferred for SMPL models in research pipelines (like PHC/UHC) because it natively supports the kinematic tree structure and 3-DOF spherical joints (ball joints) typically used to represent human joints, which helps in efficient simulation of complex humanoid dynamics. URDF is also supported by Isaac Gym, but MJCF is currently configured for this pipeline.
+- **DoF (Degrees of Freedom)**: 69
+  - 23 Joints x 3 (Rotation per joint) + Root (handled separately)
+
+2. Environment (Isaac Gym)
+----------------------------------------
+- **Simulator**: NVIDIA Isaac Gym (Preview Release)
+- **Physics Engine**: PhysX (configured in `env_im_mcp_vic.yaml`)
+- **Control Frequency**: 30 Hz (`controlFrequencyInv: 2` with 60Hz physics step)
+- **Substeps**: 2
+
+3. State & Observation Space
+----------------------------------------
+- **Observation Function**: `compute_imitation_observations_v6` (from `humanoid_im.py`)
+- **Components**:
+  1. **Root Height**: Height of the root from the ground.
+  2. **Local Body Position**: Position of each body part relative to the root (Rotation invariant).
+  3. **Local Body Rotation**: Orientation of each body part relative to the root.
+  4. **Local Body Velocity**: Linear velocity (local frame).
+  5. **Local Body Angular Velocity**: Angular velocity (local frame).
+  6. **Reference Motion Diff**: Difference between current state and reference motion (for next few frames). 
+     - *Includes*: Future reference positions/rotations to help the agent "see" where to go.
+
+4. Action Space (VIC Modified)
+----------------------------------------
+- **Type**: Continuous
+- **Size**: 138 (69 Kinematic + 69 Stiffness)
+- **Structure**:
+  - **First 69 dims**: Target Joint Positions (PD Control targets).
+  - **Last 69 dims**: Stiffness (Kp) Modulation values.
+  (If `learn_stiffness: False`, only the first 69 dimensions are active/learned).
+
+5. Reward Function
+----------------------------------------
+The reward is a weighted sum of multiple terms.
+*Source: `compute_imitation_reward` and `HumanoidIm._compute_reward`*
+
+1. **Imitation Reward** (Motion Tracking):
+   - **Body Position Error**: `exp(-k_pos * ||pos_diff||^2)`
+   - **Body Rotation Error**: `exp(-k_rot * ||rot_diff||^2)`
+   - **Velocity Error**: `exp(-k_vel * ||vel_diff||^2)`
+   - **Angular Vel Error**: `exp(-k_ang_vel * ||ang_vel_diff||^2)`
+   
+2. **Regularization**:
+   - **Power Reward**: Penalties for excessive energy usage (Torque * Velocity).
+
+3. **VIC Specific (If enabled)**:
+   - **Metabolic Cost**: `metabolic_cost_w * ||stiffness_action||^2`
+     (Penalizes using high stiffness unnecessarily).
+
+6. Termination Conditions
+----------------------------------------
+The episode ends if any of the following occur:
+*Source: `compute_humanoid_im_reset`*
+
+1. **Time Limit**: Episode length reaches limit (e.g., 300 steps).
+2. **Motion End**: The reference motion playback finishes.
+3. **Early Termination (Fall Detection)**:
+   - The deviation between the current pose and the reference motion exceeds a threshold (`terminationDistance`, typically 0.15m - 0.25m).
+   - This prevents the agent from learning "weird" behaviors when it has already failed to track the motion.
