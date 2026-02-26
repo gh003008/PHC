@@ -140,5 +140,6 @@ trials/
 output_videos/
 *.pkl
 *.pt
+*.pth
 new_trials
 gh-md-toc
