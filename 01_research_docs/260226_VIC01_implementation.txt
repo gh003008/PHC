@@ -1,0 +1,50 @@
+[260226 VIC01 구현 분석]
+
+본 문서는 Humanoid 모델의 Variable Impedance Control (VIC) 구현 방식과 VIC01 학습 설정에 대해 상세히 기술합니다.
+
+1. 현재 학습 상태 (VIC01)
+- 상태: 학습 진행 중 (GPU: cuda:0)
+- 단계: Stage 1 (Warm-up)
+- 진행 상황: 100 Epoch 도달 및 체크포인트(output/VIC01_00000100.pth) 저장 완료.
+- 특이사항: Stage 1에서는 Co-contraction Factor (CCF)를 0으로 고정하여 기존 Baseline(V4)과 동일한 Stiffness 조건에서 보행 안정성을 먼저 확보합니다.
+
+2. 구현 전략 및 코드 구조
+
+2.1 주요 참고 코드
+- phc/env/tasks/humanoid.py: Isaac Gym의 기본 PD 제어 루프 및 Gain 초기화 로직 참고.
+- phc/env/tasks/humanoid_im.py: Observation 구성 및 Reward 계산 로직의 기반.
+
+2.2 신규 작성 코드 및 기능
+기존 코드를 보존하기 위해 접미사 _vic 를 붙여 새로운 파일들을 생성 및 수정했습니다.
+
+구현 파일: phc/env/tasks/humanoid_im_vic.py
+핵심 제어 로직이 포함된 클래스 HumanoidImVIC를 정의했습니다.
+
+- get_action_size()
+  기존 DoF 크기의 Action Space를 2배로 확장하여 {Target Pose (q_target), Co-contraction Factor (beta)} 쌍으로 구성했습니다.
+
+- _compute_torques(actions) (핵심 오버라이드)
+  Isaac Gym의 내장 PD 대신 수동으로 토크를 계산하여 가변 임피던스를 구현했습니다.
+  
+  로직 설명:
+  1. Action에서 q_target과 beta를 분리합니다.
+  2. beta 범위(-1.0 ~ 1.0)를 활용하여 Impedance Scale (2^beta)을 계산합니다 (0.5배 ~ 2.0배 범위).
+  3. 실시간 Gain 계산: Kp' = Kp_base * Scale, Kd' = Kd_base * Scale.
+  4. 토크 계산: Tau = Kp' * (q_target - q_curr) - Kd' * q_dot_curr.
+  
+  이 로직은 Simulation Substep(60Hz)마다 호출되어 물리 엔진 내부에서 고주파 제어 성능을 보장합니다.
+
+3. 환경 및 학습 설정
+
+환경 설정: phc/data/cfg/env/env_im_walk_vic.yaml
+- control_mode: "pd" (내장 Isaac PD를 끄고 수동 계산 모드 활성화)
+- vic_enabled: True (VIC 로직 활성화 플래그)
+- vic_curriculum_stage: 1 (현재 1단계 학습 중, CCF 고정)
+- vic_ccf_min: -1.0 / vic_ccf_max: 1.0 (가변 강성 범위 제한)
+
+학습 설정: phc/data/cfg/learning/im_walk_vic.yaml
+- experiment: VIC01 (실험 명칭 지정)
+- Network: Action Space 확장에 맞춰 출력 레이어 크기가 자동 조정됩니다.
+
+4. 요약 및 향후 계획
+현재 구현된 VIC 시스템은 수동 토크 제어를 통해 물리 엔진의 Substep 단위에서 강성을 변화시킬 수 있는 구조를 갖추었습니다. Stage 1 학습이 충분히 진행되어 보행이 안정화되면, 설정을 Stage 2로 변경하여 본격적인 가변 강성 학습을 시작할 예정입니다. 2단계에서는 높은 강성에 대한 페널티를 추가하여 에너지 효율적인 강성 조절 능력을 학습하게 됩니다.

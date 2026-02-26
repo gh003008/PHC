@@ -71,3 +71,38 @@ python phc/run.py \
     --motion_file phc/data/amass/pkls/amass_isaac_standing_upright_slim.pkl \
     --headless --no_virtual_display
 
+python phc/run.py --task HumanoidImMCPVIC --cfg_env phc/data/cfg/env/env_im_mcp_vic.yaml --cfg_train phc/data/cfg/learning/im_mcp_vic.yaml --no_log
+
+[260222 일]
+
+
+명령어
+1. 학습
+# 1. 혹시 남아있을지 모르는 프로세스 정리 (권장)
+pkill -9 python
+
+# 2. V4 Fresh Start 실행
+python phc/run.py \
+  --task HumanoidIm \
+  --cfg_env phc/data/cfg/env/env_im_walk.yaml \
+  --cfg_train phc/data/cfg/learning/im_walk.yaml \
+  --network_path output/
+
+2. 평가
+  python phc/run.py \
+  --task HumanoidIm \
+  --cfg_env phc/data/cfg/env/env_im_walk.yaml \
+  --cfg_train phc/data/cfg/learning/im_walk.yaml \
+  --test \
+  --checkpoint output/Humanoid_V4_Fresh_Start_01_00015000.pth
+
+
+
+vic
+1. 학습
+
+2. 평가
+
+3. 이어서 학습
+
+

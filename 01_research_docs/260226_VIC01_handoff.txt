@@ -1,0 +1,44 @@
+[260226 VIC 구현 프로젝트 인수인계 문서]
+
+본 문서는 새로운 에이전트가 PHC 프로젝트의 Variable Impedance Control (VIC) 구현 내용을 원활하게 이어받을 수 있도록 현재까지의 진행 상황과 핵심 정보를 정리합니다.
+
+1. 프로젝트 개요
+- 목표: Humanoid 모델(SMPL 기반)에 가변 임피던스 제어(VIC)를 도입하여 외란에 강인하고 생체 모사적인 보행 구현.
+- 프레임워크: PHC (Physically Grounded Humanoid Controller), Isaac Gym 기반.
+- 주요 규칙: .agent/rules/code-command.md 에 정의된 폴더 역할 및 문서 작성 규칙 준수.
+
+2. 현재까지 진행 상황 (VIC01 실험)
+
+2.1 VIC 구현 핵심
+- 파일: phc/env/tasks/humanoid_im_vic.py (HumanoidImVIC 클래스)
+- Action Space 확장: 기존 관절 타겟 관절 수(N)에서 2배(2N)로 확장. {관절 타겟, 각 관절의 Co-contraction Factor (beta)} 쌍으로 구성.
+- 수동 PD 제어: Isaac Gym 내장 PD를 끄고(control_mode: pd), 파이썬 상에서 _compute_torques 루프를 직접 구현.
+- 가변 강성 로직: 토크 계산 시 기본 Gain(Kp, Kd)에 2^beta 를 곱하여 실시간으로 강성 조절 가능.
+
+2.2 커리큘럼 및 학습 상태
+- 실험 명칭: VIC01 (Stage 1 Warm-up)
+- Stage 1 설정: 가변 강성 계수(beta)를 0으로 마스킹하여 기존 V4와 동일한 조건으로 보행을 먼저 학습.
+- 현재 학습 진행: 약 5,750 Epoch 경과. Mean Reward가 230 수준으로 도달하며 안정적인 보행 패턴 형성 확인.
+- 성능: GPU 기준 약 13k-14k Step FPS 유지 중.
+
+3. 주요 파일 및 경로
+- 핵심 코드: phc/env/tasks/humanoid_im_vic.py
+- 설정 파일: phc/data/cfg/env/env_im_walk_vic.yaml, phc/data/cfg/learning/im_walk_vic.yaml
+- 아카이브: exp_config/forward_walking/260226_VIC01/ (체크포인트 및 설정 원본 보관)
+- 상세 분석 문서:
+  01_research_docs/260226_VIC01_implementation.txt (구현 상세 분석)
+  03_궁금한 것들 정리/260226_VIC01_setting.txt (구현 문답 정리)
+
+4. 새로운 에이전트를 위한 향후 활동 제안 (Next Steps)
+
+4.1 Stage 2 전환 (Unlock Stiffness Learning)
+- 보행이 완벽히 안정화되었다고 판단되면 env_im_walk_vic.yaml 에서 vic_curriculum_stage를 2로 변경.
+- beta(CCF) 마스킹을 해제하여 에이전트가 스스로 최적의 강성을 학습하게 함.
+- 이때 대사비용(Metabolic Cost) 보상을 활성화하여 불필요하게 높은 강성을 쓰는 것을 억제해야 함 (vic_metabolic_reward_w 설정).
+
+4.2 결과 분석 및 튜닝
+- 강성(Stiffness) 변화가 보행의 견고함(Robustness)에 미치는 영향 분석.
+- Tensorboard나 WandB를 통해 CCF 값의 변화 추이를 모니터링할 것.
+
+4.3 외란 테스트 준비
+- 학습된 가변 강성 정책이 외부 밀치기(Push/Force) 등에 어느 정도의 복원력을 가지는지 테스트 시나리오 구성 필요.
