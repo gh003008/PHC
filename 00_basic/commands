@@ -1,0 +1,129 @@
+[260217 화]
+
+- PHC 환경 세팅
+
+- 일단 smpl 모델 가라로 채워 넣음
+data/smpl/SMPL_MALE.pkl (Neutral 복사본)
+data/smpl/SMPL_FEMALE.pkl (Neutral 복사본)
+
+- 가만히 서 있는 좀비 pretrained policy [phc_comp_kp_2]
+conda activate phc
+python phc/run_hydra.py \
+    learning=im_mcp_big \
+    learning.params.network.ending_act=False \
+    exp_name=phc_comp_kp_2 \
+    env.obs_v=7 \
+    env=env_im_getup_mcp \
+    robot=smpl_humanoid \
+    robot.real_weight_porpotion_boxes=False \
+    env.motion_file=sample_data/amass_isaac_standing_upright_slim.pkl \
+    env.models=['output/HumanoidIm/phc_kp_2/Humanoid.pth'] \
+    env.num_prim=3 \
+    env.num_envs=1 \
+    headless=False \
+    epoch=-1 \
+    test=True
+
+- phc에서 제공하는 인간 모델 분석
+분석 문서 참고
+
+- SMPLX_MALE.npz 이런것 없어서 오류
+/home/gunhee/Downloads/models_smplx_v1_1/models/smplx/ 에서 발견
+/home/gunhee/workspace/PHC/data/smpl/ 로 복사해서 해결
+인간 모델 분석이 완료되었고, PHC 환경 및 SMPL-X 모델 정상 동작도 확인
+
+- SMPL-X pretrained policy [phc_x_pnn]
+python phc/run_hydra.py \
+    learning=im_pnn_big \
+    exp_name=phc_x_pnn \
+    env=env_im_x_pnn \
+    robot=smplx_humanoid \
+    env.motion_file=sample_data/standing_x.pkl \
+    env.training_prim=0 \
+    epoch=-1 \
+    test=True \
+    env.num_envs=1 \
+    headless=False
+
+
+[260218 수]
+- 학습 명령어 (아직 실패 )
+python phc/run.py \
+    --task HumanoidImMCPVIC \
+    --cfg_env phc/data/cfg/env/env_im_mcp_vic.yaml \
+    --cfg_train phc/data/cfg/learning/im_mcp_vic.yaml \
+    --motion_file phc/data/amass/pkls/amass_isaac_standing_upright_slim.pkl \
+    --headless --no_virtual_display
+
+python phc/run.py --task HumanoidImMCPVIC --cfg_env phc/data/cfg/env/env_im_mcp_vic.yaml --cfg_train phc/data/cfg/learning/im_mcp_vic.yaml --no_log
+
+[260222 일]
+
+
+명령어
+
+conda activate phc
+export LD_LIBRARY_PATH=/home/gunhee/anaconda3/envs/phc/lib 
+
+1. 학습
+# 1. 혹시 남아있을지 모르는 프로세스 정리 (권장)
+pkill -9 python
+
+# 2. V4 Fresh Start 실행
+python phc/run.py \
+  --task HumanoidIm \
+  --cfg_env phc/data/cfg/env/env_im_walk.yaml \
+  --cfg_train phc/data/cfg/learning/im_walk.yaml \
+  --network_path output/
+
+2. 평가
+  python phc/run.py \
+  --task HumanoidIm \
+  --cfg_env phc/data/cfg/env/env_im_walk.yaml \
+  --cfg_train phc/data/cfg/learning/im_walk.yaml \
+  --test \
+  --checkpoint output/Humanoid_V4_Fresh_Start_01_00015000.pth
+
+
+
+VIC01
+1. 학습
+python phc/run.py \
+--task HumanoidImVIC \
+--cfg_env phc/data/cfg/env/env_im_walk_vic.yaml \
+--cfg_train phc/data/cfg/learning/im_walk_vic.yaml \
+--experiment VIC01 \
+--headless \
+--num_envs 512
+ --no_virtual_display
+
+2. 평가
+python phc/run.py \
+--task HumanoidImVIC \
+--cfg_env phc/data/cfg/env/env_im_walk_vic.yaml \
+--cfg_train phc/data/cfg/learning/im_walk_vic.yaml \
+--experiment VIC01 \
+--num_envs 1 \
+--test --epoch -1 \
+--no_virtual_display
+
+python phc/run.py \
+ --task HumanoidImVIC \
+ --cfg_env phc/data/cfg/env/env_im_walk_vic.yaml \
+ --cfg_train phc/data/cfg/learning/im_walk_vic.yaml \
+ --experiment VIC01 \
+ --num_envs 1 \
+ --test --epoch 15000 \
+ --no_virtual_display
+
+3. 이어서 학습
+python phc/run.py \
+--task HumanoidImVIC \
+--cfg_env phc/data/cfg/env/env_im_walk_vic.yaml \
+--cfg_train phc/data/cfg/learning/im_walk_vic.yaml \
+--experiment VIC01 \
+--headless \
+--num_envs 512 \
+--epoch 10400
+
+
