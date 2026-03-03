@@ -98,11 +98,6 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
         self._vic_metabolic_reward_w = cfg["env"].get("vic_metabolic_reward_w", 0.0)
         self._vic_ccf_min = cfg["env"].get("vic_ccf_min", -1.0)
         self._vic_ccf_max = cfg["env"].get("vic_ccf_max", 1.0)
-        # VIC: Action rate penalty (jitter suppression)
-        self._action_rate_penalty_w = cfg["env"].get("action_rate_penalty_w", 0.0)
-        # VIC: Upper body ROM limit (DOF indices 33~68: Neck, Head, Thorax, Shoulder, Elbow, Wrist, Hand x2)
-        self._upper_body_dof_start = 33  # Neck DOF start (body index 11 * 3)
-        self._upper_body_rom_limit = cfg["env"].get("upper_body_rom_limit", None)  # rad, None = no limit
 
         if self._vic_enabled:
             print(f"[{self.__class__.__name__}] VIC Enabled. Stage: {self._vic_curriculum_stage}")
@@ -963,31 +958,17 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
 
         # print(self.dof_force_tensor.abs().max())
         if self.power_reward:
-            power = torch.abs(torch.multiply(self.dof_force_tensor, self._dof_vel)).sum(dim=-1)
+            power = torch.abs(torch.multiply(self.dof_force_tensor, self._dof_vel)).sum(dim=-1) 
             # power_reward = -0.00005 * (power ** 2)
             power_reward = -self.power_coefficient * power
             power_reward[self.progress_buf <= 3] = 0 # First 3 frame power reward should not be counted. since they could be dropped.
 
             self.rew_buf[:] += power_reward
             self.reward_raw = torch.cat([self.reward_raw, power_reward[:, None]], dim=-1)
-
-        # VIC: Action rate penalty (jitter suppression)
-        if self._action_rate_penalty_w > 0 and hasattr(self, '_last_actions') and self._last_actions is not None:
-            action_diff = torch.sum(torch.square(self.actions - self._last_actions), dim=-1)
-            action_rate_penalty = -self._action_rate_penalty_w * action_diff
-            action_rate_penalty[self.progress_buf <= 1] = 0  # skip first frame (last_actions = 0)
-            self.rew_buf[:] += action_rate_penalty
-
-        # VIC: Update last_actions after reward computation
-        if hasattr(self, '_last_actions') and self._last_actions is not None:
-            self._last_actions[:] = self.actions[:]
-
+        
         return
     
     def _reset_envs(self, env_ids):
-        # VIC: Reset last_actions for terminated envs
-        if hasattr(self, '_last_actions') and self._last_actions is not None:
-            self._last_actions[env_ids] = 0
         super()._reset_envs(env_ids)
         if self.collect_dataset:
             self.obs_buf_t = self.obs_buf.cpu().numpy() # first time step update
@@ -1149,9 +1130,6 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
         # VIC Stage 1: zero out CCF in PPO buffer to prevent gradient noise
         if self._vic_enabled and self._vic_curriculum_stage == 1:
             self.actions[:, self._num_actions:] = 0
-        # VIC: Initialize last_actions buffer on first call
-        if not hasattr(self, '_last_actions') or self._last_actions is None:
-            self._last_actions = torch.zeros_like(self.actions)
         return
 
     # VIC: Read PD gains from MJCF joint 'user' attribute.
@@ -1214,15 +1192,8 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
             q_targets_full = q_targets_raw
             ccf_full = ccf_raw
 
-        # VIC: Scale down upper body (Neck~Hand) actions before converting to PD targets.
-        # Clamping pd_tar in absolute angle space is dangerous (reference init may be outside limit).
-        # Instead, scale the action itself to limit how far from the joint midpoint upper body can go.
-        if self._upper_body_rom_limit is not None:
-            q_targets_full[:, self._upper_body_dof_start:] *= self._upper_body_rom_limit
-
         # 4. Map to PD targets and Impedance scales
         pd_tar = self._action_to_pd_targets(q_targets_full)
-
         ccf_full = torch.clamp(ccf_full, self._vic_ccf_min, self._vic_ccf_max)
         impedance_scale = torch.pow(2.0, ccf_full)
 

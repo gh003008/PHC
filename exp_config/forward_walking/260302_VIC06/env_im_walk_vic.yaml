@@ -52,8 +52,6 @@ env:
   vic_metabolic_reward_w: 0.01
   vic_ccf_min: -1.0 # 0.5x stiffness
   vic_ccf_max: 1.0  # 2.0x stiffness
-  action_rate_penalty_w: 0.005  # VIC: jitter suppression
-  upper_body_rom_limit: 0.5     # VIC: upper body ROM limit (rad, ~28 deg)
   
   stateInit: "Random"
   hybridInitProb: 0.5
