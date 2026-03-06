@@ -42,7 +42,7 @@ env:
   z_activation: "silu"
   kp_scale: 1
   power_reward: True
-  power_coefficient: 0.0000005
+  power_coefficient: 0.000005
   shape_resampling_interval: 500
 
   controlFrequencyInv: 2  # 30 Hz

@@ -958,16 +958,16 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
 
         # print(self.dof_force_tensor.abs().max())
         if self.power_reward:
-            power = torch.abs(torch.multiply(self.dof_force_tensor, self._dof_vel)).sum(dim=-1)
+            power = torch.abs(torch.multiply(self.dof_force_tensor, self._dof_vel)).sum(dim=-1) 
             # power_reward = -0.00005 * (power ** 2)
             power_reward = -self.power_coefficient * power
             power_reward[self.progress_buf <= 3] = 0 # First 3 frame power reward should not be counted. since they could be dropped.
 
             self.rew_buf[:] += power_reward
             self.reward_raw = torch.cat([self.reward_raw, power_reward[:, None]], dim=-1)
-
+        
         return
-
+    
     def _reset_envs(self, env_ids):
         super()._reset_envs(env_ids)
         if self.collect_dataset:
@@ -1127,9 +1127,6 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
 
     def pre_physics_step(self, actions):
         self.actions = actions.to(self.device).clone()
-        # VIC Stage 1: zero out CCF in PPO buffer to prevent gradient noise
-        if self._vic_enabled and self._vic_curriculum_stage == 1:
-            self.actions[:, self._num_actions:] = 0
         return
 
     # VIC: Read PD gains from MJCF joint 'user' attribute.
@@ -1194,7 +1191,6 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
 
         # 4. Map to PD targets and Impedance scales
         pd_tar = self._action_to_pd_targets(q_targets_full)
-
         ccf_full = torch.clamp(ccf_full, self._vic_ccf_min, self._vic_ccf_max)
         impedance_scale = torch.pow(2.0, ccf_full)
 

@@ -13,7 +13,7 @@ env:
   episodeLength: 300
   is_flag_run: False
   enable_debug_vis: False
-  
+
   fut_tracks: False
   obs_v: 6
   auto_pmcp: False
@@ -46,13 +46,15 @@ env:
   shape_resampling_interval: 500
 
   controlFrequencyInv: 2  # 30 Hz
+
   # VIC (Variable Impedance Control) Settings
   vic_enabled: True
   vic_curriculum_stage: 1 # Stage 1: Fixed CCF, Stage 2: Learnable CCF
   vic_metabolic_reward_w: 0.01
   vic_ccf_min: -1.0 # 0.5x stiffness
   vic_ccf_max: 1.0  # 2.0x stiffness
-  
+  # VIC (Variable Impedance Control) Settings
+
   stateInit: "Random"
   hybridInitProb: 0.5
   numAMPObsSteps: 10
@@ -61,8 +63,8 @@ env:
   root_height_obs: True
   key_bodies: ["R_Ankle", "L_Ankle", "R_Wrist", "L_Wrist"]
   contact_bodies: ["R_Ankle", "L_Ankle", "R_Toe", "L_Toe"]
-  reset_bodies: ['Pelvis', 'L_Hip', 'L_Knee', 'R_Hip', 'R_Knee', 'Torso', 'Spine', 
-                 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 
+  reset_bodies: ['Pelvis', 'L_Hip', 'L_Knee', 'R_Hip', 'R_Knee', 'Torso', 'Spine',
+                 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow',
                  'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
   terminationHeight: 0.15
   enableEarlyTermination: True

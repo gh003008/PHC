@@ -1,0 +1,90 @@
+VIC02 실험 설정 및 학습 기록 (260227)
+
+
+1. 실험 목적
+
+VIC01에서 15,000 에폭 학습 후 평가한 결과, V4(기존 isaac_pd) 대비 보행 성능이 현저히 저하되었다.
+몸 전체가 저주파(2-3Hz)로 떨리고, 발을 제대로 떼지 못하며, 아장아장 따라가다 실패하는 양상이 관찰되었다.
+원인 분석 결과, PD 제어 주기 차이(120Hz vs 60Hz)보다는 액션 공간 2배 확장에 따른 최적화 난이도 증가와
+task reward 대비 discriminator reward 비중이 너무 높았던 점이 주요 원인으로 판단되었다.
+
+VIC02에서는 task reward 가중치를 높여 위치 추종(보행 성공)에 더 집중하도록 조정한다.
+
+
+2. VIC01 대비 변경 사항
+
+변경 파일: phc/data/cfg/learning/im_walk_vic.yaml
+
+(1) task_reward_w: 0.3 에서 0.5로 변경
+(2) disc_reward_w: 0.7 에서 0.5로 변경
+(3) name: VIC01 에서 VIC02로 변경
+
+환경 설정(env_im_walk_vic.yaml)과 태스크 코드(humanoid_im_vic.py)는 VIC01과 동일하다.
+
+변경 근거:
+VIC01에서는 AMP discriminator 비중이 0.7로 높아, 동작의 자연스러움에 치중한 나머지
+실제 보행 추종(위치/회전/속도 매칭)이 부족했을 가능성이 있다.
+task reward 비중을 0.5로 올려 보행 성공률을 먼저 확보하고,
+자연스러움은 보행이 안정된 후 discriminator 비중을 다시 조정하여 개선할 수 있다.
+
+
+3. 설정 파일 요약
+
+환경 설정 (env_im_walk_vic.yaml):
+- control_mode: pd (환경단 수동 PD 토크 계산)
+- vic_enabled: True
+- vic_curriculum_stage: 1 (CCF=0 고정, Stage 1 워밍업)
+- vic_metabolic_reward_w: 0.01
+- vic_ccf_min: -1.0, vic_ccf_max: 1.0
+- controlFrequencyInv: 2 (정책 30Hz)
+- reward_specs: k_pos=200, k_rot=10, k_vel=1.0, k_ang_vel=0.1
+                w_pos=0.4, w_rot=0.3, w_vel=0.2, w_ang_vel=0.1
+
+학습 설정 (im_walk_vic.yaml):
+- network: MLP [1024, 1024, 512, 512], discriminator [1024, 512]
+- learning_rate: 5e-5
+- max_epochs: 15000
+- minibatch_size: 2048
+- horizon_length: 32
+- task_reward_w: 0.5 (VIC01: 0.3)
+- disc_reward_w: 0.5 (VIC01: 0.7)
+- disc_reward_scale: 2
+
+
+4. 학습 명령어
+
+python phc/run.py --task HumanoidImVIC \
+  --cfg_env phc/data/cfg/env/env_im_walk_vic.yaml \
+  --cfg_train phc/data/cfg/learning/im_walk_vic.yaml \
+  --experiment VIC02 \
+  --headless \
+  --num_envs 512 \
+  --no_virtual_display
+
+참고: VIC 학습은 run_hydra.py가 아닌 run.py(레거시)로 실행한다.
+env yaml 구조가 Hydra 형식이 아니라 run.py의 직접 로딩 방식에 맞춰져 있기 때문이다.
+
+
+5. 평가 명령어
+
+python phc/run.py --task HumanoidImVIC \
+  --cfg_env phc/data/cfg/env/env_im_walk_vic.yaml \
+  --cfg_train phc/data/cfg/learning/im_walk_vic.yaml \
+  --experiment VIC02 \
+  --num_envs 1 \
+  --test --epoch -1 \
+  --no_virtual_display
+
+
+6. 설정 백업
+
+exp_config/forward_walking/260227_VIC02/ 폴더에 다음 파일들을 백업하였다:
+- env_im_walk_vic.yaml
+- im_walk_vic.yaml
+- humanoid_im_vic.py
+
+
+7. 모니터링
+
+wandb 프로젝트: PHC_Walk_Baseline
+확인 지표: eval_success_rate, reward 수렴 추이

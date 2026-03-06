@@ -4,7 +4,7 @@ notes: "Pure PHC Single Primitive Walking Task - Focused on subset"
 disable_multiprocessing: False
 
 env:
-  motion_file: "sample_data/amass_isaac_walking_forward_single.pkl"
+  motion_file: "sample_data/amass_isaac_walking_forward.pkl"
   num_envs: 512
   numEnvs: 512
   env_spacing: 5
@@ -42,7 +42,7 @@ env:
   z_activation: "silu"
   kp_scale: 1
   power_reward: True
-  power_coefficient: 0.0000005
+  power_coefficient: 0.00005
   shape_resampling_interval: 500
 
   controlFrequencyInv: 2  # 30 Hz

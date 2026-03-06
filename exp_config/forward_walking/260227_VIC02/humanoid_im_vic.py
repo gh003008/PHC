@@ -1,8 +1,6 @@
 
 
-import os
 import os.path as osp
-import xml.etree.ElementTree as ET
 from typing import OrderedDict
 import torch
 import numpy as np
@@ -958,16 +956,16 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
 
         # print(self.dof_force_tensor.abs().max())
         if self.power_reward:
-            power = torch.abs(torch.multiply(self.dof_force_tensor, self._dof_vel)).sum(dim=-1)
+            power = torch.abs(torch.multiply(self.dof_force_tensor, self._dof_vel)).sum(dim=-1) 
             # power_reward = -0.00005 * (power ** 2)
             power_reward = -self.power_coefficient * power
             power_reward[self.progress_buf <= 3] = 0 # First 3 frame power reward should not be counted. since they could be dropped.
 
             self.rew_buf[:] += power_reward
             self.reward_raw = torch.cat([self.reward_raw, power_reward[:, None]], dim=-1)
-
+        
         return
-
+    
     def _reset_envs(self, env_ids):
         super()._reset_envs(env_ids)
         if self.collect_dataset:
@@ -1127,52 +1125,19 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
 
     def pre_physics_step(self, actions):
         self.actions = actions.to(self.device).clone()
-        # VIC Stage 1: zero out CCF in PPO buffer to prevent gradient noise
-        if self._vic_enabled and self._vic_curriculum_stage == 1:
-            self.actions[:, self._num_actions:] = 0
         return
-
-    # VIC: Read PD gains from MJCF joint 'user' attribute.
-    # SMPL MJCF motor actuators leave IsaacGym dof_prop stiffness/damping at 0,
-    # so we parse the XML directly to get the correct kp/kd values.
-    def _init_pd_gains_from_mjcf(self):
-        mjcf_path = "phc/data/assets/mjcf/smpl_humanoid.xml"
-        tree = ET.parse(mjcf_path)
-        root = tree.getroot()
-
-        kp_list = []
-        kd_list = []
-        for joint in root.findall('.//joint'):
-            name = joint.get('name')
-            if name is None:
-                continue  # skip freejoint (unnamed)
-            user = joint.get('user')
-            if user is None:
-                kp_list.append(0.0)
-                kd_list.append(0.0)
-                continue
-            vals = [float(v) for v in user.split()]
-            kp_list.append(vals[0])  # kp = first value
-            kd_list.append(vals[1])  # kd = second value
-
-        self.p_gains = torch.tensor(kp_list, dtype=torch.float32, device=self.device)
-        self.d_gains = torch.tensor(kd_list, dtype=torch.float32, device=self.device)
-        self.default_dof_pos = torch.zeros(1, self.num_dof, device=self.device)
-
-        print(f"[VIC] PD gains initialized from MJCF: {len(kp_list)} DOFs, "
-              f"kp range [{self.p_gains.min():.0f}, {self.p_gains.max():.0f}], "
-              f"kd range [{self.d_gains.min():.1f}, {self.d_gains.max():.1f}]")
 
     def _compute_torques(self, actions):
         if not self._vic_enabled:
             return super()._compute_torques(actions)
         
         # 1. Initialize Base Gains if missing (for SMPL)
-        # VIC: SMPL MJCF motor actuators set dof_prop stiffness/damping to 0.
-        # Must read kp/kd from MJCF joint 'user' attribute instead.
-        if not hasattr(self, "_vic_gains_initialized") or not self._vic_gains_initialized:
-            self._init_pd_gains_from_mjcf()
-            self._vic_gains_initialized = True
+        if not hasattr(self, "p_gains") or self.p_gains is None:
+            # Get default gains from asset properties
+            dof_prop = self.gym.get_actor_dof_properties(self.envs[0], self.humanoid_handles[0])
+            self.p_gains = torch.from_numpy(dof_prop['stiffness']).to(self.device)
+            self.d_gains = torch.from_numpy(dof_prop['damping']).to(self.device)
+            self.default_dof_pos = torch.zeros(1, self.num_dof, device=self.device)
 
         # 2. Split actions (Target Pose, CCF)
         q_targets_raw = actions[:, :self._num_actions]
@@ -1194,7 +1159,6 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
 
         # 4. Map to PD targets and Impedance scales
         pd_tar = self._action_to_pd_targets(q_targets_full)
-
         ccf_full = torch.clamp(ccf_full, self._vic_ccf_min, self._vic_ccf_max)
         impedance_scale = torch.pow(2.0, ccf_full)
 

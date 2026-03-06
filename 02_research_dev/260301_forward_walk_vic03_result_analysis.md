@@ -6,7 +6,7 @@ VIC01/02에서 발견된 PD 게인 버그를 수정한 첫 번째 실험.
 
 수정 내용:
 - _init_pd_gains_from_mjcf() 메서드 추가: MJCF XML의 joint user 속성에서 kp/kd를 직접 파싱
-- dof_prop['stiffness'] (= 0) 대신 MJCF의 실제 값 사용
+- dof_prop['stffness'] (= 0) 대신 MJCF의 실제 값 사용
 - 파싱 결과: 69 DOFs, kp 범위 [50, 500], kd 범위 [1.0, 5.0]
 
 학습 설정:
