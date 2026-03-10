@@ -48,20 +48,18 @@ env:
   controlFrequencyInv: 2  # 30 Hz
   # VIC (Variable Impedance Control) Settings
   vic_enabled: True
-  vic_curriculum_stage: 2 # Stage 1: Fixed CCF, Stage 2: Learnable CCF
+  vic_curriculum_stage: 1 # Stage 1: Fixed CCF, Stage 2: Learnable CCF
   vic_metabolic_reward_w: 0.01
   vic_ccf_min: -1.0 # 0.5x stiffness
   vic_ccf_max: 1.0  # 2.0x stiffness
   # VIC: CCF Grouping (8 groups: L_hip, L_knee, L_ankle, R_hip, R_knee, R_ankle, upper_left, upper_right)
   vic_ccf_num_groups: 8
-  # VIC: CCF sigma override (log-std, -1.0 => std=0.37 vs PD default -2.9 => std=0.055)
-  vic_ccf_sigma_init: -1.0
   # VIC: Reward Weight Curriculum (epoch < switch_epoch: task-heavy, epoch >= switch_epoch: disc-heavy)
-  reward_curriculum_switch_epoch: 10000
+  reward_curriculum_switch_epoch: 7500
   reward_w_stage1_task: 0.7
   reward_w_stage1_disc: 0.3
-  reward_w_stage2_task: 0.3
-  reward_w_stage2_disc: 0.7
+  reward_w_stage2_task: 0.4
+  reward_w_stage2_disc: 0.6
   
   stateInit: "Random"
   hybridInitProb: 0.5

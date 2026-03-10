@@ -6,6 +6,15 @@ trigger: always_on
 
 ## 1. General Rules
 - 모든 명령어 실행 전에는 반드시 'conda activate phc'를 실행하여 환경을 활성화합니다.
+- 명령어가 헷갈릴 경우 반드시 `00_basic/commands` 파일을 먼저 확인한다. 실제 실행에 사용된 명령어들이 기록되어 있다.
+- VIC 학습 명령어 기본 형식 (run.py 사용):
+  ```
+  python phc/run.py --task HumanoidImVIC --cfg_env phc/data/cfg/env/env_im_walk_vic.yaml --cfg_train phc/data/cfg/learning/im_walk_vic.yaml --headless --num_envs 512
+  ```
+- VIC 평가 명령어 기본 형식:
+  ```
+  python phc/run.py --task HumanoidImVIC --cfg_env phc/data/cfg/env/env_im_walk_vic.yaml --cfg_train phc/data/cfg/learning/im_walk_vic.yaml --num_envs 1 --test --epoch -1 --no_virtual_display
+  ```
 
 ## 2. Documentation Rules
 성격에 맞는 폴더에 문서를 작성하며 파일명은 'YYMMDD_topic_name.extension' 형식을 따릅니다. 모든 문서는 한글로 작성합니다.

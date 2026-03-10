@@ -100,10 +100,6 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
         self._vic_ccf_max = cfg["env"].get("vic_ccf_max", 1.0)
         # VIC: CCF Grouping - reduces action space from 69 to N_groups CCF dims
         self._vic_ccf_num_groups = cfg["env"].get("vic_ccf_num_groups", 0)
-        # VIC: CCF sigma override (None = use same sigma as PD targets)
-        self._vic_ccf_sigma_init = cfg["env"].get("vic_ccf_sigma_init", None)
-        if self._vic_ccf_sigma_init is not None:
-            self._vic_ccf_sigma_init = float(self._vic_ccf_sigma_init)
         # VIC: Reward Curriculum - stage1: high task weight, stage2: high disc weight
         self._reward_curriculum_switch_epoch = cfg["env"].get("reward_curriculum_switch_epoch", 0)
         self._reward_w_stage1_task = cfg["env"].get("reward_w_stage1_task", 0.7)
@@ -1249,16 +1245,11 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
         # 5. Compute Torques with Dynamic Gains
         kp = self.p_gains * impedance_scale
         kd = self.d_gains * impedance_scale
-
+        
         torques = kp * (pd_tar - self._dof_pos) - kd * self._dof_vel
-
-        # VIC: Store CCF stats for wandb logging (ccf_raw: [N, n_groups] or [N, 69])
-        if self._vic_curriculum_stage == 2:
-            self._last_ccf_mean = ccf_raw.mean().item()
-            self._last_ccf_std = ccf_raw.std().item()
-            self._last_ccf_group_mean = ccf_raw.mean(dim=0).detach()  # [n_groups]
-
+        
         return torch.clamp(torques, -self.torque_limits, self.torque_limits)
+        return
 
     def _compute_reset(self):
         time = (self.progress_buf) * self.dt + self._motion_start_times + self._motion_start_times_offset # Reset is also called after the progress_buf is updated. 

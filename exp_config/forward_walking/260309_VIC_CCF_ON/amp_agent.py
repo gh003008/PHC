@@ -533,20 +533,6 @@ class AMPAgent(common_agent.CommonAgent):
                     self._task_reward_w = humanoid_env._reward_w_stage2_task
                     self._disc_reward_w = humanoid_env._reward_w_stage2_disc
 
-            # VIC: Override CCF sigma for better exploration (runs once at first epoch)
-            if (not getattr(self, '_vic_ccf_sigma_overridden', False)
-                    and hasattr(humanoid_env, '_vic_ccf_sigma_init')
-                    and humanoid_env._vic_ccf_sigma_init is not None):
-                import math as _math
-                num_pd = humanoid_env._num_actions
-                ccf_dims = humanoid_env.get_action_size() - num_pd
-                with torch.no_grad():
-                    self.model.a2c_network.sigma.data[num_pd:] = humanoid_env._vic_ccf_sigma_init
-                self._vic_ccf_sigma_overridden = True
-                print(f"[VIC] CCF sigma overridden: {humanoid_env._vic_ccf_sigma_init:.2f} "
-                      f"(std={_math.exp(humanoid_env._vic_ccf_sigma_init):.3f}) "
-                      f"for CCF dims [{num_pd}:{num_pd+ccf_dims}]")
-
         self.running_mean_std_temp = copy.deepcopy(self.running_mean_std)  # Freeze running mean/std, so that the actor does not use the updated mean/std
         self.running_mean_std_temp.freeze()
 
@@ -957,19 +943,6 @@ class AMPAgent(common_agent.CommonAgent):
         
         if "sym_loss" in train_info:
             train_info_dict['loss/sym_loss'] = torch_ext.mean_list(train_info['sym_loss']).item()
-
-        # VIC: Log CCF statistics if Stage 2 is active
-        if self.vec_env.env.task.humanoid_type in ["smpl", "smplh", "smplx"]:
-            humanoid_env = self.vec_env.env.task
-            if (hasattr(humanoid_env, '_vic_curriculum_stage')
-                    and humanoid_env._vic_curriculum_stage == 2
-                    and hasattr(humanoid_env, '_last_ccf_mean')):
-                train_info_dict['vic/ccf_mean'] = humanoid_env._last_ccf_mean
-                train_info_dict['vic/ccf_std'] = humanoid_env._last_ccf_std
-                if hasattr(humanoid_env, '_last_ccf_group_mean'):
-                    for g_idx, v in enumerate(humanoid_env._last_ccf_group_mean.tolist()):
-                        train_info_dict[f'vic/ccf_g{g_idx}'] = v
-
         return train_info_dict
 
     def _amp_debug(self, info):

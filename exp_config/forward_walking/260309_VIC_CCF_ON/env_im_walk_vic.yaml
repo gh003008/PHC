@@ -54,8 +54,6 @@ env:
   vic_ccf_max: 1.0  # 2.0x stiffness
   # VIC: CCF Grouping (8 groups: L_hip, L_knee, L_ankle, R_hip, R_knee, R_ankle, upper_left, upper_right)
   vic_ccf_num_groups: 8
-  # VIC: CCF sigma override (log-std, -1.0 => std=0.37 vs PD default -2.9 => std=0.055)
-  vic_ccf_sigma_init: -1.0
   # VIC: Reward Weight Curriculum (epoch < switch_epoch: task-heavy, epoch >= switch_epoch: disc-heavy)
   reward_curriculum_switch_epoch: 10000
   reward_w_stage1_task: 0.7
