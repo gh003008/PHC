@@ -42,7 +42,7 @@ params:
   load_checkpoint: False
 
   config:
-    name: VIC_CCF_ON2
+    name: VIC_PHASE_04
     env_name: rlgpu
     multi_gpu: False
     ppo: True
@@ -88,5 +88,5 @@ params:
     task_reward_w: 0.5
     disc_reward_w: 0.5
 
-    player: 
+    player:
         games_num: 10000

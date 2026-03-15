@@ -37,7 +37,12 @@ trigger: always_on
 학습 평가(test 모드)가 완료된 후, 반드시 `02_research_dev/` 폴더에 결과 분석 문서를 작성한다.
 - 파일명 형식: `YYMMDD_forward_walk_vicXX_result_analysis.md`
 - 예시: `02_research_dev/260304_forward_walk_vic07_result_analysis.md`
-- 내용: 실험 설정 요약, 정량적 평가 결과(avg reward/steps, 이전 실험과 비교 표), 시각화 관찰, 원인 분석, 다음 실험 방향
+- 내용은 반드시 다음 항목을 포함한다:
+  - **State**: observation 구성 (dims, 포함 정보)
+  - **Action**: action 구성 (PD target dims + CCF dims 등)
+  - **Reward**: 보상 함수 구성 (각 term, 가중치, 수식)
+  - **Termination**: 종료 조건 (early termination, 거리 기준, 모션 종료 등)
+  - 실험 설정 요약, 정량적 평가 결과(avg reward/steps, 이전 실험과 비교 표), 시각화 관찰, 원인 분석, 다음 실험 방향
 - 사용자가 별도로 요청하지 않아도 평가 결과가 나오면 자동으로 작성한다.
 
 ## 5. Experiment Config Backup

@@ -381,4 +381,24 @@ class IMAMPPlayerContinuous(amp_players.AMPPlayerContinuous):
                 sum_steps / games_played * n_game_life,
             )
 
+        # VIC: Save phase-CCF log and run analysis if available
+        try:
+            task = self.env.task
+            if hasattr(task, '_phase_ccf_log') and len(task._phase_ccf_log) > 0:
+                # Determine experiment-specific output directory
+                exp_name = self.config.get('name', 'unknown')
+                out_dir = os.path.join('output', exp_name)
+                os.makedirs(out_dir, exist_ok=True)
+                save_path = os.path.join(out_dir, 'phase_ccf_log.npy')
+                np.save(save_path, np.array(task._phase_ccf_log, dtype=object))
+                print(f"[VIC] Phase-CCF log saved: {save_path} ({len(task._phase_ccf_log)} steps)")
+                # Auto-run phase-CCF analysis and plot generation
+                try:
+                    from analyze_phase_ccf import analyze
+                    analyze(save_path)
+                except Exception as e:
+                    print(f"[VIC] Phase-CCF analysis failed: {e}")
+        except Exception:
+            pass
+
         return

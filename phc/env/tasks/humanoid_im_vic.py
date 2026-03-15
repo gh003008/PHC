@@ -4,6 +4,7 @@ import os
 import os.path as osp
 import xml.etree.ElementTree as ET
 from typing import OrderedDict
+import math
 import torch
 import numpy as np
 from phc.utils.torch_utils import quat_to_tan_norm
@@ -110,11 +111,17 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
         self._reward_w_stage1_disc = cfg["env"].get("reward_w_stage1_disc", 0.3)
         self._reward_w_stage2_task = cfg["env"].get("reward_w_stage2_task", 0.5)
         self._reward_w_stage2_disc = cfg["env"].get("reward_w_stage2_disc", 0.5)
+        # VIC: Phase observation (sin/cos encoding of motion phase)
+        self._vic_phase_obs = cfg["env"].get("vic_phase_obs", False)
+        # VIC: Biomechanical CCF reward (contact-force based stance/swing CCF guidance)
+        self._vic_bio_ccf_reward_w = cfg["env"].get("vic_bio_ccf_reward_w", 0.0)
 
         if self._vic_enabled:
             print(f"[{self.__class__.__name__}] VIC Enabled. Stage: {self._vic_curriculum_stage}")
             if self._vic_ccf_num_groups > 0:
                 print(f"[{self.__class__.__name__}] CCF Grouping: {self._vic_ccf_num_groups} groups (action size: 69+{self._vic_ccf_num_groups}={69+self._vic_ccf_num_groups})")
+            if self._vic_phase_obs:
+                print(f"[{self.__class__.__name__}] Phase Obs: Enabled (+2 dims: sin/cos)")
             # Initialize default PD gains from dof_properties if needed
             # These will be scaled by CCF in pre_physics_step
             self._kp_base = None # Will be set during env creation if needed, but normally we use self.p_gains
@@ -575,10 +582,13 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
                 obs_size = len(self._track_bodies) * 15
                 obs_size += len(self._track_bodies) * self._num_traj_samples * 15
 
-            elif self.obs_v == 9:  # local+ dof + pos (not diff) + vel (no diff). 
+            elif self.obs_v == 9:  # local+ dof + pos (not diff) + vel (no diff).
                 obs_size = len(self._track_bodies) * self._num_traj_samples * 24
                 obs_size -= (len(self._track_bodies) - 1) * self._num_traj_samples * 6
 
+        # VIC: Phase observation adds 2 dims (sin/cos)
+        if self._enable_task_obs and self._vic_phase_obs:
+            obs_size += 2
 
         return obs_size
 
@@ -929,9 +939,111 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
                 self.ref_body_rot[env_ids] = ref_rb_rot
                 self.ref_body_pos_subset[env_ids] = ref_rb_pos_subset
                 self.ref_dof_pos[env_ids] = ref_dof_pos
-        
-        
+
+        # VIC: Append gait cycle phase observation (sin/cos encoding)
+        if self._vic_phase_obs:
+            # Lazy init: pre-compute gait phase from reference motion foot heights
+            if not hasattr(self, '_gait_phase_table'):
+                self._precompute_gait_phase()
+
+            # Current motion time within clip (handle cyclic)
+            motion_times = self.progress_buf[env_ids] * self.dt + self._motion_start_times[env_ids] + self._motion_start_times_offset[env_ids]
+            motion_len = self._motion_lib._motion_lengths[self._sampled_motion_ids[env_ids]]
+            time_in_clip = torch.fmod(motion_times, motion_len)
+            time_in_clip = torch.where(time_in_clip < 0, time_in_clip + motion_len, time_in_clip)
+
+            # Lookup gait cycle phase from pre-computed table
+            frame_idx = (time_in_clip / self._gait_motion_length * self._gait_phase_num_samples).long()
+            frame_idx = frame_idx.clamp(0, self._gait_phase_num_samples - 1)
+            gait_phase = self._gait_phase_table[frame_idx]
+
+            phase_obs = torch.stack([
+                torch.sin(2 * math.pi * gait_phase),
+                torch.cos(2 * math.pi * gait_phase),
+            ], dim=-1)  # [N, 2]
+            obs = torch.cat([obs, phase_obs], dim=-1)
+
         return obs
+
+    def _precompute_gait_phase(self):
+        """Pre-compute gait cycle phase from reference motion foot heights.
+
+        Detects right heel strikes (local minima of right ankle height) in the
+        reference motion and assigns phase 0→1 between consecutive heel strikes,
+        representing one full gait cycle (right heel strike → next right heel strike).
+        """
+        num_samples = 1000
+        motion_id = 0
+        motion_length = self._motion_lib._motion_lengths[motion_id].item()
+
+        # Sample reference motion at many time points
+        sample_times = torch.linspace(0, motion_length - 1e-4, num_samples, device=self.device)
+        motion_ids = torch.zeros(num_samples, dtype=torch.long, device=self.device)
+        offsets = torch.zeros(num_samples, 3, device=self.device)
+
+        motion_res = self._motion_lib.get_motion_state(motion_ids, sample_times, offset=offsets)
+        rb_pos = motion_res["rg_pos"]  # [num_samples, num_bodies, 3]
+
+        # Body index: R_Ankle=7 (from mujoco_joint_names order)
+        r_ankle_id = self._build_key_body_ids_tensor(["R_Ankle"]).item()
+        r_ankle_height = rb_pos[:, r_ankle_id, 2]  # [num_samples]
+
+        # Detect heel strikes as local minima of foot height
+        h = r_ankle_height
+        local_min = (h[1:-1] < h[:-2]) & (h[1:-1] <= h[2:])
+        min_indices = torch.where(local_min)[0] + 1
+
+        # Filter: keep only minima with sufficient separation (> 0.5s)
+        if len(min_indices) > 0:
+            filtered = [min_indices[0].item()]
+            for i in range(1, len(min_indices)):
+                if sample_times[min_indices[i]] - sample_times[filtered[-1]] > 0.5:
+                    filtered.append(min_indices[i].item())
+            min_indices = torch.tensor(filtered, dtype=torch.long, device=self.device)
+
+        # Build gait phase table
+        gait_phase = torch.zeros(num_samples, device=self.device)
+
+        if len(min_indices) >= 2:
+            hs_times = sample_times[min_indices]
+
+            # Between consecutive heel strikes: phase 0→1
+            for i in range(len(hs_times) - 1):
+                t0 = hs_times[i].item()
+                t1 = hs_times[i + 1].item()
+                mask = (sample_times >= t0) & (sample_times < t1)
+                if mask.any():
+                    gait_phase[mask] = (sample_times[mask] - t0) / (t1 - t0)
+
+            # Before first heel strike: extrapolate backwards using first stride period
+            stride_period = hs_times[1] - hs_times[0]
+            mask_before = sample_times < hs_times[0]
+            if mask_before.any():
+                gait_phase[mask_before] = ((sample_times[mask_before] - hs_times[0] + stride_period) / stride_period) % 1.0
+
+            # After last heel strike: extrapolate using last stride period
+            last_stride = hs_times[-1] - hs_times[-2]
+            mask_after = sample_times >= hs_times[-1]
+            if mask_after.any():
+                gait_phase[mask_after] = torch.clamp(
+                    (sample_times[mask_after] - hs_times[-1]) / last_stride, 0.0, 1.0
+                )
+
+            avg_stride = (hs_times[-1] - hs_times[0]) / (len(hs_times) - 1)
+            print(f"[{self.__class__.__name__}] Gait phase precomputed: "
+                  f"{len(min_indices)} R heel strikes detected, "
+                  f"avg stride period: {avg_stride.item():.3f}s, "
+                  f"R_Ankle height range: [{r_ankle_height.min().item():.4f}, {r_ankle_height.max().item():.4f}]m")
+        else:
+            # Fallback: use clip-level phase
+            print(f"[{self.__class__.__name__}] WARNING: <2 heel strikes detected ({len(min_indices)}). "
+                  f"Falling back to clip-level phase. R_Ankle height range: "
+                  f"[{r_ankle_height.min().item():.4f}, {r_ankle_height.max().item():.4f}]m")
+            gait_phase = sample_times / motion_length
+
+        self._gait_phase_table = gait_phase  # [num_samples]
+        self._gait_phase_num_samples = num_samples
+        self._gait_motion_length = motion_length
 
     def _compute_reward(self, actions):
         body_pos = self._rigid_body_pos
@@ -1008,7 +1120,58 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
             self.rew_buf[:] += power_reward
             self.reward_raw = torch.cat([self.reward_raw, power_reward[:, None]], dim=-1)
 
+        # VIC: Biomechanical CCF reward — stance ankle stiff, swing ankle compliant
+        if self._vic_enabled and self._vic_bio_ccf_reward_w > 0 and self._vic_curriculum_stage == 2:
+            bio_ccf_reward = self._compute_bio_ccf_reward()
+            bio_ccf_reward[self.progress_buf <= 3] = 0
+            self.rew_buf[:] += bio_ccf_reward
+            self.reward_raw = torch.cat([self.reward_raw, bio_ccf_reward[:, None]], dim=-1)
+
         return
+
+    def _compute_bio_ccf_reward(self):
+        """VIC: Biomechanical CCF reward based on foot-ground contact forces.
+
+        Stance leg (foot on ground) → reward ankle & knee CCF > 0 (stiff for weight bearing)
+        Swing leg (foot in air) → reward ankle & knee CCF < 0 (compliant for leg swing)
+
+        Uses contact_bodies: ["R_Ankle", "L_Ankle", "R_Toe", "L_Toe"]
+        CCF groups: G1=L_Knee, G2=L_Ankle+Toe, G4=R_Knee, G5=R_Ankle+Toe
+        """
+        # Get contact forces for foot bodies
+        # contact_bodies order: ["R_Ankle"=0, "L_Ankle"=1, "R_Toe"=2, "L_Toe"=3]
+        contact_forces = self._contact_forces[:, self._contact_body_ids, :]  # [N, 4, 3]
+
+        # Sum contact force magnitude per foot (ankle + toe)
+        l_foot_force = contact_forces[:, 1, :].norm(dim=-1) + contact_forces[:, 3, :].norm(dim=-1)  # [N]
+        r_foot_force = contact_forces[:, 0, :].norm(dim=-1) + contact_forces[:, 2, :].norm(dim=-1)  # [N]
+
+        contact_threshold = 10.0  # N, threshold for stance detection
+        l_is_stance = (l_foot_force > contact_threshold).float()  # [N]
+        r_is_stance = (r_foot_force > contact_threshold).float()  # [N]
+
+        if not hasattr(self, '_last_ccf_raw'):
+            return torch.zeros(self.num_envs, device=self.device)
+
+        # CCF groups: G1=L_Knee, G2=L_Ankle+Toe, G4=R_Knee, G5=R_Ankle+Toe
+        l_ankle_ccf = self._last_ccf_raw[:, 2]  # G2: L_Ankle+Toe, [N]
+        r_ankle_ccf = self._last_ccf_raw[:, 5]  # G5: R_Ankle+Toe, [N]
+        l_knee_ccf = self._last_ccf_raw[:, 1]   # G1: L_Knee, [N]
+        r_knee_ccf = self._last_ccf_raw[:, 4]   # G4: R_Knee, [N]
+
+        # Reward: stance → CCF positive (stiff), swing → CCF negative (compliant)
+        # Ankle reward
+        l_ankle_rwd = l_is_stance * torch.clamp(l_ankle_ccf, min=0) + (1 - l_is_stance) * torch.clamp(-l_ankle_ccf, min=0)
+        r_ankle_rwd = r_is_stance * torch.clamp(r_ankle_ccf, min=0) + (1 - r_is_stance) * torch.clamp(-r_ankle_ccf, min=0)
+
+        # Knee reward (same logic: stance=stiff, swing=compliant)
+        l_knee_rwd = l_is_stance * torch.clamp(l_knee_ccf, min=0) + (1 - l_is_stance) * torch.clamp(-l_knee_ccf, min=0)
+        r_knee_rwd = r_is_stance * torch.clamp(r_knee_ccf, min=0) + (1 - r_is_stance) * torch.clamp(-r_knee_ccf, min=0)
+
+        # Combine: ankle + knee (equal weight)
+        bio_reward = (l_ankle_rwd + r_ankle_rwd + l_knee_rwd + r_knee_rwd) * 0.25 * self._vic_bio_ccf_reward_w
+
+        return bio_reward
 
     def _reset_envs(self, env_ids):
         super()._reset_envs(env_ids)
@@ -1252,11 +1415,31 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
 
         torques = kp * (pd_tar - self._dof_pos) - kd * self._dof_vel
 
-        # VIC: Store CCF stats for wandb logging (ccf_raw: [N, n_groups] or [N, 69])
+        # VIC: Store CCF stats for wandb logging and bio reward (ccf_raw: [N, n_groups] or [N, 69])
         if self._vic_curriculum_stage == 2:
             self._last_ccf_mean = ccf_raw.mean().item()
             self._last_ccf_std = ccf_raw.std().item()
             self._last_ccf_group_mean = ccf_raw.mean(dim=0).detach()  # [n_groups]
+            self._last_ccf_raw = ccf_raw.detach()  # [N, n_groups] for bio CCF reward
+
+        # VIC: Phase-resolved CCF logging (test mode only)
+        if flags.test and self._vic_curriculum_stage == 2:
+            if not hasattr(self, '_phase_ccf_log'):
+                self._phase_ccf_log = []
+            # Use gait cycle phase if available, otherwise fall back to clip phase
+            if self._vic_phase_obs and hasattr(self, '_gait_phase_table'):
+                curr_time = self.progress_buf * self.dt + self._motion_start_times + self._motion_start_times_offset
+                motion_len = self._motion_lib._motion_lengths[self._sampled_motion_ids]
+                time_in_clip = curr_time % motion_len
+                num_samples = len(self._gait_phase_table)
+                frame_idx = (time_in_clip / motion_len * num_samples).long().clamp(0, num_samples - 1)
+                gait_phase = self._gait_phase_table[frame_idx[0]].item()
+            else:
+                curr_time = self.progress_buf * self.dt + self._motion_start_times + self._motion_start_times_offset
+                motion_len = self._motion_lib._motion_lengths[self._sampled_motion_ids]
+                gait_phase = torch.clamp(curr_time[0] / motion_len[0], 0.0, 1.0).item()
+            # env 0만 기록 (test mode는 보통 single env)
+            self._phase_ccf_log.append((gait_phase, ccf_raw[0].detach().cpu().numpy()))
 
         return torch.clamp(torques, -self.torque_limits, self.torque_limits)
 
