@@ -1,0 +1,93 @@
+name: "CP Spastic Diplegia"
+description: "경직형 양하지마비 뇌성마비. 양쪽 하지 경직, 상체 경미."
+injury_type: "cerebral_palsy"
+
+metadata:
+  gmfcs_level: 3  # Walks with assistive device
+  type: "spastic_diplegia"
+  notes: "양쪽 하지 대칭적 경직. 가위걸음(scissor gait) 경향. 상체는 경미한 영향."
+
+joint_params:
+  # 상체: 경미한 영향
+  Upper_L:
+    tau_active: 0.85
+    k_passive: 4.0
+    b_passive: 2.0
+    spasticity: 2.0
+    spas_dir: 0.0
+    rom_scale: 0.9
+    k_endstop: 2.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  Upper_R:
+    tau_active: 0.85
+    k_passive: 4.0
+    b_passive: 2.0
+    spasticity: 2.0
+    spas_dir: 0.0
+    rom_scale: 0.9
+    k_endstop: 2.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+
+  # 하체: 심한 경직 (양측 대칭)
+  L_Hip:
+    tau_active: 0.4
+    k_passive: 10.0
+    b_passive: 4.0
+    spasticity: 10.0
+    spas_dir: 0.3     # 내전근 경직 (가위걸음)
+    rom_scale: 0.65
+    k_endstop: 18.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  L_Knee:
+    tau_active: 0.45
+    k_passive: 8.0
+    b_passive: 3.5
+    spasticity: 12.0   # 슬관절 굴곡근 경직 → 무릎 굽힘 보행
+    spas_dir: 0.5
+    rom_scale: 0.6
+    k_endstop: 22.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  L_Ankle_Toe:
+    tau_active: 0.3
+    k_passive: 12.0
+    b_passive: 5.0
+    spasticity: 15.0   # 첨족 (equinus) 심함
+    spas_dir: 0.8       # 배굴 시 강한 저항
+    rom_scale: 0.5
+    k_endstop: 30.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  R_Hip:
+    tau_active: 0.4
+    k_passive: 10.0
+    b_passive: 4.0
+    spasticity: 10.0
+    spas_dir: 0.3
+    rom_scale: 0.65
+    k_endstop: 18.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  R_Knee:
+    tau_active: 0.45
+    k_passive: 8.0
+    b_passive: 3.5
+    spasticity: 12.0
+    spas_dir: 0.5
+    rom_scale: 0.6
+    k_endstop: 22.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  R_Ankle_Toe:
+    tau_active: 0.3
+    k_passive: 12.0
+    b_passive: 5.0
+    spasticity: 15.0
+    spas_dir: 0.8
+    rom_scale: 0.5
+    k_endstop: 30.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0

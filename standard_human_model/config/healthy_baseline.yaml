@@ -1,0 +1,177 @@
+# 정상 성인 근육 파라미터 (Baseline)
+#
+# 모든 환자 프로파일의 기준점.
+# 참고: Thelen 2003, Rajagopal 2016
+#
+# 단위:
+#   f_max: N (뉴턴)
+#   l_opt: 정규화 (1.0 = 최적 길이)
+#   v_max: l_opt/s
+#   pennation: rad
+#   tau_act/deact: s (초)
+#   stretch_gain: 무차원
+#   stretch_threshold: l_opt/s
+
+name: "Healthy Adult Baseline"
+description: "정상 성인. 모든 근육 파라미터 기본값."
+patient_type: "healthy"
+
+muscle_params:
+  # === 좌측 하지 ===
+  hip_flexors_L:
+    f_max: 1200
+    l_opt: 1.0
+    v_max: 10.0
+    pennation: 0.14        # ~8 deg
+    tau_act: 0.015
+    tau_deact: 0.060
+    k_pe: 4.0
+    epsilon_0: 0.6
+    l_tendon_slack: 1.0
+    k_tendon: 35.0
+    damping: 0.05
+
+  gluteus_max_L:
+    f_max: 1500
+    l_opt: 1.0
+    v_max: 10.0
+    pennation: 0.09
+    tau_act: 0.015
+    tau_deact: 0.060
+    k_pe: 4.0
+    epsilon_0: 0.6
+    l_tendon_slack: 1.0
+    k_tendon: 35.0
+    damping: 0.05
+
+  hip_abductors_L:
+    f_max: 800
+    l_opt: 1.0
+    v_max: 10.0
+    pennation: 0.14
+    tau_act: 0.015
+    tau_deact: 0.060
+    k_pe: 4.0
+    epsilon_0: 0.6
+    l_tendon_slack: 1.0
+    k_tendon: 35.0
+    damping: 0.05
+
+  hip_adductors_L:
+    f_max: 600
+    l_opt: 1.0
+    v_max: 10.0
+    pennation: 0.09
+    tau_act: 0.015
+    tau_deact: 0.060
+    k_pe: 4.0
+    epsilon_0: 0.6
+    l_tendon_slack: 1.0
+    k_tendon: 35.0
+    damping: 0.05
+
+  quadriceps_L:
+    f_max: 2500            # vastii — 가장 강한 근육군
+    l_opt: 1.0
+    v_max: 10.0
+    pennation: 0.09
+    tau_act: 0.015
+    tau_deact: 0.060
+    k_pe: 4.0
+    epsilon_0: 0.6
+    l_tendon_slack: 1.0
+    k_tendon: 35.0
+    damping: 0.05
+
+  rectus_femoris_L:
+    f_max: 800             # bi-articular
+    l_opt: 1.0
+    v_max: 10.0
+    pennation: 0.09
+    tau_act: 0.015
+    tau_deact: 0.060
+    k_pe: 4.0
+    epsilon_0: 0.6
+    l_tendon_slack: 1.0
+    k_tendon: 35.0
+    damping: 0.05
+
+  hamstrings_L:
+    f_max: 1800            # bi-articular
+    l_opt: 1.0
+    v_max: 10.0
+    pennation: 0.12
+    tau_act: 0.015
+    tau_deact: 0.060
+    k_pe: 4.0
+    epsilon_0: 0.6
+    l_tendon_slack: 1.0
+    k_tendon: 35.0
+    damping: 0.05
+
+  gastrocnemius_L:
+    f_max: 1500            # bi-articular
+    l_opt: 1.0
+    v_max: 10.0
+    pennation: 0.30        # ~17 deg, pennation 큼
+    tau_act: 0.015
+    tau_deact: 0.060
+    k_pe: 4.0
+    epsilon_0: 0.6
+    l_tendon_slack: 1.0
+    k_tendon: 35.0
+    damping: 0.05
+
+  soleus_L:
+    f_max: 2800            # 매우 강함, 체중 지지
+    l_opt: 1.0
+    v_max: 6.0             # 느린 근육 (Type I 우세)
+    pennation: 0.44        # ~25 deg
+    tau_act: 0.020
+    tau_deact: 0.080
+    k_pe: 4.0
+    epsilon_0: 0.6
+    l_tendon_slack: 1.0
+    k_tendon: 35.0
+    damping: 0.05
+
+  tibialis_ant_L:
+    f_max: 600
+    l_opt: 1.0
+    v_max: 10.0
+    pennation: 0.17
+    tau_act: 0.015
+    tau_deact: 0.060
+    k_pe: 4.0
+    epsilon_0: 0.6
+    l_tendon_slack: 1.0
+    k_tendon: 35.0
+    damping: 0.05
+
+  # === 우측 하지 (좌측과 동일) ===
+  hip_flexors_R: {f_max: 1200, l_opt: 1.0, v_max: 10.0, pennation: 0.14, tau_act: 0.015, tau_deact: 0.060, k_pe: 4.0, epsilon_0: 0.6, l_tendon_slack: 1.0, k_tendon: 35.0, damping: 0.05}
+  gluteus_max_R: {f_max: 1500, l_opt: 1.0, v_max: 10.0, pennation: 0.09, tau_act: 0.015, tau_deact: 0.060, k_pe: 4.0, epsilon_0: 0.6, l_tendon_slack: 1.0, k_tendon: 35.0, damping: 0.05}
+  hip_abductors_R: {f_max: 800, l_opt: 1.0, v_max: 10.0, pennation: 0.14, tau_act: 0.015, tau_deact: 0.060, k_pe: 4.0, epsilon_0: 0.6, l_tendon_slack: 1.0, k_tendon: 35.0, damping: 0.05}
+  hip_adductors_R: {f_max: 600, l_opt: 1.0, v_max: 10.0, pennation: 0.09, tau_act: 0.015, tau_deact: 0.060, k_pe: 4.0, epsilon_0: 0.6, l_tendon_slack: 1.0, k_tendon: 35.0, damping: 0.05}
+  quadriceps_R: {f_max: 2500, l_opt: 1.0, v_max: 10.0, pennation: 0.09, tau_act: 0.015, tau_deact: 0.060, k_pe: 4.0, epsilon_0: 0.6, l_tendon_slack: 1.0, k_tendon: 35.0, damping: 0.05}
+  rectus_femoris_R: {f_max: 800, l_opt: 1.0, v_max: 10.0, pennation: 0.09, tau_act: 0.015, tau_deact: 0.060, k_pe: 4.0, epsilon_0: 0.6, l_tendon_slack: 1.0, k_tendon: 35.0, damping: 0.05}
+  hamstrings_R: {f_max: 1800, l_opt: 1.0, v_max: 10.0, pennation: 0.12, tau_act: 0.015, tau_deact: 0.060, k_pe: 4.0, epsilon_0: 0.6, l_tendon_slack: 1.0, k_tendon: 35.0, damping: 0.05}
+  gastrocnemius_R: {f_max: 1500, l_opt: 1.0, v_max: 10.0, pennation: 0.30, tau_act: 0.015, tau_deact: 0.060, k_pe: 4.0, epsilon_0: 0.6, l_tendon_slack: 1.0, k_tendon: 35.0, damping: 0.05}
+  soleus_R: {f_max: 2800, l_opt: 1.0, v_max: 6.0, pennation: 0.44, tau_act: 0.020, tau_deact: 0.080, k_pe: 4.0, epsilon_0: 0.6, l_tendon_slack: 1.0, k_tendon: 35.0, damping: 0.05}
+  tibialis_ant_R: {f_max: 600, l_opt: 1.0, v_max: 10.0, pennation: 0.17, tau_act: 0.015, tau_deact: 0.060, k_pe: 4.0, epsilon_0: 0.6, l_tendon_slack: 1.0, k_tendon: 35.0, damping: 0.05}
+
+# === 반사 파라미터 ===
+reflex_params:
+  default:
+    stretch_gain: 1.0
+    stretch_threshold: 0.1
+    gto_gain: 0.5
+    gto_threshold: 0.8
+    reciprocal_gain: 0.3
+
+# === 인대/관절낭 ===
+ligament_params:
+  k_lig: 50.0
+  alpha: 10.0
+  damping: 5.0
+  soft_limit_margin: 0.85   # hard limit의 85%에서 soft limit 시작

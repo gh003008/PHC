@@ -1,0 +1,90 @@
+name: "Healthy Adult"
+description: "정상 성인. 모든 파라미터 기본값. 다른 프로파일의 baseline."
+injury_type: "none"
+
+metadata:
+  reference: "baseline"
+  notes: "모든 관절 그룹이 PARAM_DEFAULTS 사용"
+
+# 기본값과 동일하므로 명시적으로 작성 (문서화 목적)
+joint_params:
+  L_Hip:
+    tau_active: 1.0
+    k_passive: 3.0
+    b_passive: 1.5
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 1.0
+    k_endstop: 0.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  L_Knee:
+    tau_active: 1.0
+    k_passive: 3.0
+    b_passive: 1.5
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 1.0
+    k_endstop: 0.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  L_Ankle_Toe:
+    tau_active: 1.0
+    k_passive: 3.0
+    b_passive: 1.5
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 1.0
+    k_endstop: 0.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  R_Hip:
+    tau_active: 1.0
+    k_passive: 3.0
+    b_passive: 1.5
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 1.0
+    k_endstop: 0.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  R_Knee:
+    tau_active: 1.0
+    k_passive: 3.0
+    b_passive: 1.5
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 1.0
+    k_endstop: 0.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  R_Ankle_Toe:
+    tau_active: 1.0
+    k_passive: 3.0
+    b_passive: 1.5
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 1.0
+    k_endstop: 0.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  Upper_L:
+    tau_active: 1.0
+    k_passive: 3.0
+    b_passive: 1.5
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 1.0
+    k_endstop: 0.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  Upper_R:
+    tau_active: 1.0
+    k_passive: 3.0
+    b_passive: 1.5
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 1.0
+    k_endstop: 0.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0

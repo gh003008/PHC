@@ -1,0 +1,93 @@
+name: "SCI Incomplete Spastic"
+description: "불완전 척수손상, 경직성. 부분적 능동 토크 + 높은 경직."
+injury_type: "SCI"
+
+metadata:
+  injury_level: "T8-T12"
+  asia_scale: "C"  # Incomplete, motor non-functional
+  type: "spastic"  # 경직성 (UMN 특성)
+  notes: "UMN 병변으로 경직 동반. 약간의 자발적 움직임 가능하나 경직이 방해."
+
+joint_params:
+  Upper_L:
+    tau_active: 1.0
+    k_passive: 3.0
+    b_passive: 1.5
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 1.0
+    k_endstop: 0.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  Upper_R:
+    tau_active: 1.0
+    k_passive: 3.0
+    b_passive: 1.5
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 1.0
+    k_endstop: 0.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+
+  # 하체: 경직성 불완전 마비
+  L_Hip:
+    tau_active: 0.1
+    k_passive: 8.0
+    b_passive: 3.0
+    spasticity: 8.0
+    spas_dir: 0.5     # 신전 시 경직 강함 (굴곡근 경직)
+    rom_scale: 0.7
+    k_endstop: 15.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  L_Knee:
+    tau_active: 0.1
+    k_passive: 6.0
+    b_passive: 2.5
+    spasticity: 10.0   # 무릎 경직 심함
+    spas_dir: 0.6      # 신전 저항 (굴곡근 경직)
+    rom_scale: 0.65
+    k_endstop: 20.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  L_Ankle_Toe:
+    tau_active: 0.05
+    k_passive: 10.0
+    b_passive: 4.0
+    spasticity: 12.0   # 발목 경직 가장 심함
+    spas_dir: 0.7      # 배굴 시 저항 (족저굴곡근 경직)
+    rom_scale: 0.6
+    k_endstop: 25.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  R_Hip:
+    tau_active: 0.1
+    k_passive: 8.0
+    b_passive: 3.0
+    spasticity: 8.0
+    spas_dir: 0.5
+    rom_scale: 0.7
+    k_endstop: 15.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  R_Knee:
+    tau_active: 0.1
+    k_passive: 6.0
+    b_passive: 2.5
+    spasticity: 10.0
+    spas_dir: 0.6
+    rom_scale: 0.65
+    k_endstop: 20.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  R_Ankle_Toe:
+    tau_active: 0.05
+    k_passive: 10.0
+    b_passive: 4.0
+    spasticity: 12.0
+    spas_dir: 0.7
+    rom_scale: 0.6
+    k_endstop: 25.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0

@@ -1,0 +1,94 @@
+name: "SCI T10 Complete Flaccid"
+description: "T10 완전 척수손상, 이완성 마비. 하체 능동 토크 0, 수동 역학만 존재."
+injury_type: "SCI"
+
+metadata:
+  injury_level: "T10"
+  asia_scale: "A"  # Complete
+  type: "flaccid"  # 이완성 (LMN 특성)
+  notes: "T10 이하 완전 마비. 근긴장 소실, 관절 이완. 장기 부동 시 구축 발생 가능."
+
+joint_params:
+  # 상체: 정상 (T10 이상 보존)
+  Upper_L:
+    tau_active: 1.0
+    k_passive: 3.0
+    b_passive: 1.5
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 1.0
+    k_endstop: 0.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  Upper_R:
+    tau_active: 1.0
+    k_passive: 3.0
+    b_passive: 1.5
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 1.0
+    k_endstop: 0.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+
+  # 하체: 완전 이완성 마비
+  L_Hip:
+    tau_active: 0.0
+    k_passive: 0.5
+    b_passive: 0.3
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 0.9
+    k_endstop: 3.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  L_Knee:
+    tau_active: 0.0
+    k_passive: 0.3
+    b_passive: 0.2
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 0.85
+    k_endstop: 5.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  L_Ankle_Toe:
+    tau_active: 0.0
+    k_passive: 0.8
+    b_passive: 0.3
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 0.8
+    k_endstop: 8.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  R_Hip:
+    tau_active: 0.0
+    k_passive: 0.5
+    b_passive: 0.3
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 0.9
+    k_endstop: 3.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  R_Knee:
+    tau_active: 0.0
+    k_passive: 0.3
+    b_passive: 0.2
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 0.85
+    k_endstop: 5.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0
+  R_Ankle_Toe:
+    tau_active: 0.0
+    k_passive: 0.8
+    b_passive: 0.3
+    spasticity: 0.0
+    spas_dir: 0.0
+    rom_scale: 0.8
+    k_endstop: 8.0
+    tremor_amp: 0.0
+    tremor_freq: 0.0

@@ -1,0 +1,165 @@
+# 근육군 정의 — SMPL Humanoid 하지 16개 + 상체 4개 = 20개 근육군
+#
+# 각 근육군은 기능적으로 유사한 개별 근육들의 묶음(lumping).
+# Surface EMG envelope과 대응 가능한 수준.
+#
+# moment_arms: {joint_name: [x, y, z]} (meters)
+#   양수 = 관절 양방향(+) 토크, 음수 = 음방향(-) 토크
+#   SMPL에서 x축이 주 운동축 (flexion/extension)
+#
+# 참고: OpenSim Rajagopal 2016 모델 기반 근사값
+#       실제 moment arm은 관절각 의존이지만, 여기서는 대표값 사용
+
+muscles:
+  # =========================================================================
+  # 좌측 하지 (L)
+  # =========================================================================
+
+  # --- 고관절 ---
+  - name: "hip_flexors_L"          # 장요근(iliopsoas) + 대퇴근막장근
+    type: "mono-articular"
+    l_slack: 0.30
+    moment_arms:
+      L_Hip: [0.04, 0, 0]          # 고관절 굴곡 (+x)
+
+  - name: "gluteus_max_L"          # 대둔근
+    type: "mono-articular"
+    l_slack: 0.25
+    moment_arms:
+      L_Hip: [-0.06, 0, 0]         # 고관절 신전 (-x)
+
+  - name: "hip_abductors_L"        # 중둔근 + 소둔근
+    type: "mono-articular"
+    l_slack: 0.15
+    moment_arms:
+      L_Hip: [0, 0.05, 0]          # 고관절 외전 (+y)
+
+  - name: "hip_adductors_L"        # 내전근군
+    type: "mono-articular"
+    l_slack: 0.20
+    moment_arms:
+      L_Hip: [0, -0.04, 0]         # 고관절 내전 (-y)
+
+  # --- 대퇴 (bi-articular) ---
+  - name: "quadriceps_L"           # 대퇴사두근 (내측광근+외측광근+중간광근)
+    type: "mono-articular"         # vastii 부분 (단관절)
+    l_slack: 0.25
+    moment_arms:
+      L_Knee: [-0.04, 0, 0]        # 무릎 신전 (-x, knee x축은 굴곡이 +)
+
+  - name: "rectus_femoris_L"       # 대퇴직근 (이관절근!)
+    type: "bi-articular"
+    l_slack: 0.35
+    moment_arms:
+      L_Hip: [0.03, 0, 0]          # 고관절 굴곡
+      L_Knee: [-0.04, 0, 0]        # 무릎 신전
+
+  - name: "hamstrings_L"           # 반건양근 + 반막양근 + 대퇴이두근 (이관절근!)
+    type: "bi-articular"
+    l_slack: 0.35
+    moment_arms:
+      L_Hip: [-0.06, 0, 0]         # 고관절 신전
+      L_Knee: [0.03, 0, 0]         # 무릎 굴곡
+
+  # --- 하퇴 ---
+  - name: "gastrocnemius_L"        # 비복근 (이관절근!)
+    type: "bi-articular"
+    l_slack: 0.30
+    moment_arms:
+      L_Knee: [0.02, 0, 0]         # 무릎 굴곡 (약함)
+      L_Ankle: [-0.05, 0, 0]       # 발목 족저굴 (-x)
+
+  - name: "soleus_L"               # 가자미근 (단관절)
+    type: "mono-articular"
+    l_slack: 0.25
+    moment_arms:
+      L_Ankle: [-0.05, 0, 0]       # 발목 족저굴
+
+  - name: "tibialis_ant_L"         # 전경골근
+    type: "mono-articular"
+    l_slack: 0.25
+    moment_arms:
+      L_Ankle: [0.03, 0, 0]        # 발목 배굴 (+x)
+
+  # =========================================================================
+  # 우측 하지 (R) — 좌측과 대칭
+  # =========================================================================
+  - name: "hip_flexors_R"
+    type: "mono-articular"
+    l_slack: 0.30
+    moment_arms:
+      R_Hip: [0.04, 0, 0]
+
+  - name: "gluteus_max_R"
+    type: "mono-articular"
+    l_slack: 0.25
+    moment_arms:
+      R_Hip: [-0.06, 0, 0]
+
+  - name: "hip_abductors_R"
+    type: "mono-articular"
+    l_slack: 0.15
+    moment_arms:
+      R_Hip: [0, 0.05, 0]
+
+  - name: "hip_adductors_R"
+    type: "mono-articular"
+    l_slack: 0.20
+    moment_arms:
+      R_Hip: [0, -0.04, 0]
+
+  - name: "quadriceps_R"
+    type: "mono-articular"
+    l_slack: 0.25
+    moment_arms:
+      R_Knee: [-0.04, 0, 0]
+
+  - name: "rectus_femoris_R"
+    type: "bi-articular"
+    l_slack: 0.35
+    moment_arms:
+      R_Hip: [0.03, 0, 0]
+      R_Knee: [-0.04, 0, 0]
+
+  - name: "hamstrings_R"
+    type: "bi-articular"
+    l_slack: 0.35
+    moment_arms:
+      R_Hip: [-0.06, 0, 0]
+      R_Knee: [0.03, 0, 0]
+
+  - name: "gastrocnemius_R"
+    type: "bi-articular"
+    l_slack: 0.30
+    moment_arms:
+      R_Knee: [0.02, 0, 0]
+      R_Ankle: [-0.05, 0, 0]
+
+  - name: "soleus_R"
+    type: "mono-articular"
+    l_slack: 0.25
+    moment_arms:
+      R_Ankle: [-0.05, 0, 0]
+
+  - name: "tibialis_ant_R"
+    type: "mono-articular"
+    l_slack: 0.25
+    moment_arms:
+      R_Ankle: [0.03, 0, 0]
+
+# =========================================================================
+# 길항근 쌍 정의
+# =========================================================================
+antagonist_pairs:
+  # 좌측
+  - ["hip_flexors_L", "gluteus_max_L"]
+  - ["hip_abductors_L", "hip_adductors_L"]
+  - ["quadriceps_L", "hamstrings_L"]
+  - ["tibialis_ant_L", "soleus_L"]
+  - ["tibialis_ant_L", "gastrocnemius_L"]
+  # 우측
+  - ["hip_flexors_R", "gluteus_max_R"]
+  - ["hip_abductors_R", "hip_adductors_R"]
+  - ["quadriceps_R", "hamstrings_R"]
+  - ["tibialis_ant_R", "soleus_R"]
+  - ["tibialis_ant_R", "gastrocnemius_R"]
