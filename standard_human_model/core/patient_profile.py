@@ -80,7 +80,7 @@ class PatientProfile:
         if not os.path.exists(full_path):
             raise FileNotFoundError(f"Patient profile not found: {full_path}")
 
-        with open(full_path, "r") as f:
+        with open(full_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         return cls(

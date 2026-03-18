@@ -91,7 +91,7 @@ class HumanBody:
         # --- 1. 근육 구조 로드 ---
         if not os.path.isabs(muscle_def_path):
             muscle_def_path = os.path.join(CONFIG_DIR, muscle_def_path)
-        with open(muscle_def_path, "r") as f:
+        with open(muscle_def_path, "r", encoding="utf-8") as f:
             muscle_def = yaml.safe_load(f)
 
         muscle_list = muscle_def["muscles"]
@@ -101,7 +101,7 @@ class HumanBody:
         # --- 2. 파라미터 로드 ---
         if not os.path.isabs(param_path):
             param_path = os.path.join(CONFIG_DIR, param_path)
-        with open(param_path, "r") as f:
+        with open(param_path, "r", encoding="utf-8") as f:
             params = yaml.safe_load(f)
 
         muscle_params = params.get("muscle_params", {})

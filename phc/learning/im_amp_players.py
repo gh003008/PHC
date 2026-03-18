@@ -398,6 +398,14 @@ class IMAMPPlayerContinuous(amp_players.AMPPlayerContinuous):
                     analyze(save_path)
                 except Exception as e:
                     print(f"[VIC] Phase-CCF analysis failed: {e}")
+            # VIC: Save per-body tracking error log
+            if hasattr(task, '_tracking_error_log') and len(task._tracking_error_log) > 0:
+                exp_name = self.config.get('name', 'unknown')
+                out_dir = os.path.join('output', exp_name)
+                os.makedirs(out_dir, exist_ok=True)
+                save_path = os.path.join(out_dir, 'tracking_error_log.npy')
+                np.save(save_path, np.array(task._tracking_error_log, dtype=object))
+                print(f"[VIC] Tracking error log saved: {save_path} ({len(task._tracking_error_log)} steps)")
         except Exception:
             pass
 

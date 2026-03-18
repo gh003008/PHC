@@ -1127,6 +1127,15 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
             self.rew_buf[:] += bio_ccf_reward
             self.reward_raw = torch.cat([self.reward_raw, bio_ccf_reward[:, None]], dim=-1)
 
+        # VIC: Per-body tracking error logging (test mode only)
+        if flags.test:
+            if not hasattr(self, '_tracking_error_log'):
+                self._tracking_error_log = []
+            # Per-body position error: [N, 24, 3]
+            per_body_err = (body_pos[0] - ref_rb_pos[0]).norm(dim=-1)  # [24]
+            step = self.progress_buf[0].item()
+            self._tracking_error_log.append((step, per_body_err.detach().cpu().numpy()))
+
         return
 
     def _compute_bio_ccf_reward(self):

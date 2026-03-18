@@ -280,17 +280,20 @@ while not gym.query_viewer_has_closed(viewer):
 
         elif evt.action == "push_forward" and evt.value > 0:
             forces = gymapi.Vec3(force_magnitude, 0.0, 0.0)
-            gym.apply_body_force(env, actor, 0, forces, None, gymapi.ENV_SPACE)
+            rh = gym.get_actor_rigid_body_handle(env, actor, 0)
+            gym.apply_body_forces(env, rh, forces, None, gymapi.ENV_SPACE)
             print(f"  Push forward: {force_magnitude}N")
 
         elif evt.action == "push_backward" and evt.value > 0:
             forces = gymapi.Vec3(-force_magnitude, 0.0, 0.0)
-            gym.apply_body_force(env, actor, 0, forces, None, gymapi.ENV_SPACE)
+            rh = gym.get_actor_rigid_body_handle(env, actor, 0)
+            gym.apply_body_forces(env, rh, forces, None, gymapi.ENV_SPACE)
             print(f"  Push backward: {force_magnitude}N")
 
         elif evt.action == "push_up" and evt.value > 0:
             forces = gymapi.Vec3(0.0, 0.0, force_magnitude * 3)
-            gym.apply_body_force(env, actor, 0, forces, None, gymapi.ENV_SPACE)
+            rh = gym.get_actor_rigid_body_handle(env, actor, 0)
+            gym.apply_body_forces(env, rh, forces, None, gymapi.ENV_SPACE)
             print(f"  Push up: {force_magnitude * 3}N")
 
         elif evt.action.startswith("body_") and evt.value > 0:

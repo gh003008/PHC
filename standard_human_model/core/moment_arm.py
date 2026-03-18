@@ -78,7 +78,7 @@ class MomentArmMatrix:
     @classmethod
     def from_yaml(cls, yaml_path: str, device: str = "cpu") -> "MomentArmMatrix":
         """YAML 파일에서 근육 정의 로드."""
-        with open(yaml_path, "r") as f:
+        with open(yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return cls(data["muscles"], device=device)
 
