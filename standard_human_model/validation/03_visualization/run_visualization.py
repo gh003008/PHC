@@ -13,10 +13,10 @@ IsaacGym 뷰어에서 세 환자 프로파일을 시각화한다.
     cd /home/gunhee/workspace/PHC
 
     # 뷰어 켜기
-    python standard_human_model/validation/03_visualization/run_visualization.py --pipeline cpu
+    python standard_human_model/validation/03_visualization/run_visualization.py
 
     # headless (플롯만)
-    python standard_human_model/validation/03_visualization/run_visualization.py --headless --pipeline cpu
+    python standard_human_model/validation/03_visualization/run_visualization.py --headless
 """
 
 # CRITICAL: IsaacGym must be imported before torch
@@ -46,7 +46,8 @@ TEST_DOF_IDX  = JOINT_DOF_RANGE["L_Knee"][0]
 DT            = 1.0 / 60.0
 INITIAL_ANGLE = 1.4    # 80°
 INITIAL_VEL   = -5.0   # rad/s 신전 방향
-DURATION      = 5.0
+DURATION      = 10.0   # 10초 (뷰어용 여유)
+
 
 PROFILES = [
     {"name": "Healthy",          "color_rgb": (0.25, 0.55, 1.0),  "mods": {}},
@@ -77,13 +78,11 @@ def main():
     gym = gymapi.acquire_gym()
 
     # ── I03와 동일한 sim + env 생성 ─────────────────────────────────────────
+    gfx_device = args.graphics_device_id if not args.headless else None
     sim, envs, actor_handles, dof_pos_all, dof_vel_all, torques, num_dof = \
         create_sim_and_envs(gym, args, num_envs=num_envs,
-                            initial_knee_angles=[INITIAL_ANGLE] * num_envs)
-
-    num_bodies = gym.get_asset_rigid_body_count(
-        gym.get_actor_asset(envs[0], actor_handles[0])
-    ) if hasattr(gym, "get_actor_asset") else 24  # SMPL = 24 bodies
+                            initial_knee_angles=[INITIAL_ANGLE] * num_envs,
+                            graphics_device=gfx_device)
 
     # ── 색상 적용 (try: MESH_VISUAL, fallback: skip) ─────────────────────
     try:
@@ -101,9 +100,9 @@ def main():
     gym.refresh_dof_state_tensor(sim)
     for i in range(num_envs):
         dof_vel_all[i, TEST_DOF_IDX] = INITIAL_VEL
-    env_ids = torch.arange(num_envs, dtype=torch.int32)
     _dof_state_tensor = gym.acquire_dof_state_tensor(sim)
     dof_states_kick = gymtorch.wrap_tensor(_dof_state_tensor)
+    env_ids = torch.arange(num_envs, dtype=torch.int32, device=dof_states_kick.device)
     gym.set_dof_state_tensor_indexed(
         sim,
         gymtorch.unwrap_tensor(dof_states_kick),
@@ -128,12 +127,15 @@ def main():
         cam_props.width  = 1280
         cam_props.height = 720
         viewer = gym.create_viewer(sim, cam_props)
-        gym.viewer_camera_look_at(
-            viewer, None,
-            gymapi.Vec3(12.0, -2.0, 4.0),
-            gymapi.Vec3(0.0,   5.0, 1.5),
-        )
-        print("\n뷰어 켜짐. 'Q' 또는 창 닫기로 종료.\n")
+        if viewer is None:
+            print("[경고] 뷰어 생성 실패 (Graphics nullptr). headless 모드로 계속 진행.")
+        else:
+            gym.viewer_camera_look_at(
+                viewer, None,
+                gymapi.Vec3(12.0, -2.0, 4.0),
+                gymapi.Vec3(0.0,   5.0, 1.5),
+            )
+            print(f"\n뷰어 켜짐. 'Q' 또는 창 닫기로 종료.\n", flush=True)
 
     # ── 기록 배열 ────────────────────────────────────────────────────────
     time_arr       = np.arange(max_steps) * DT
@@ -151,8 +153,8 @@ def main():
         torques.zero_()
 
         for i in range(num_envs):
-            pos_i = dof_pos_all[i].unsqueeze(0)
-            vel_i = dof_vel_all[i].unsqueeze(0)
+            pos_i = dof_pos_all[i].cpu().unsqueeze(0)
+            vel_i = dof_vel_all[i].cpu().unsqueeze(0)
             cmd   = torch.zeros(1, bodies[i].num_muscles)
             bio_tau = bodies[i].compute_torques(pos_i, vel_i, cmd, dt=DT)
             tau_val = float(np.clip(bio_tau[0, TEST_DOF_IDX].item(), -500.0, 500.0))
@@ -162,15 +164,16 @@ def main():
 
         gym.set_dof_actuation_force_tensor(sim, gymtorch.unwrap_tensor(torques))
         gym.simulate(sim)
-        gym.fetch_results(sim, True)
+        if dof_pos_all.device.type == "cpu":
+            gym.fetch_results(sim, True)
 
         if viewer is not None:
-            gym.step_graphics(sim)
-            gym.draw_viewer(viewer, sim, True)
-            gym.sync_frame_time(sim)
             if gym.query_viewer_has_closed(viewer):
                 max_steps = step + 1
                 break
+            gym.step_graphics(sim)
+            gym.draw_viewer(viewer, sim, True)
+            gym.sync_frame_time(sim)   # 실시간 속도 동기화
 
         if (step + 1) % 60 == 0:
             t = (step + 1) * DT
@@ -179,7 +182,13 @@ def main():
                      for i in range(num_envs)]
             print(f"  t={t:4.1f}s  |  {'  '.join(parts)}")
 
+    # ── 시뮬레이션 종료 후 뷰어 유지 (Q 또는 창 닫기 전까지) ────────────
     if viewer is not None:
+        print("\n시뮬레이션 완료. 뷰어를 닫으려면 Q를 누르거나 창을 닫으세요.")
+        while not gym.query_viewer_has_closed(viewer):
+            gym.step_graphics(sim)
+            gym.draw_viewer(viewer, sim, False)
+            gym.sync_frame_time(sim)
         gym.destroy_viewer(viewer)
     gym.destroy_sim(sim)
 

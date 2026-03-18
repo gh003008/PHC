@@ -70,10 +70,11 @@ def save_and_close(fig, name):
 # ─────────────────────────────────────────────────────────────────────────────
 # IsaacGym 환경 공통 설정
 # ─────────────────────────────────────────────────────────────────────────────
-def create_sim_and_envs(gym, args, num_envs, initial_knee_angles):
+def create_sim_and_envs(gym, args, num_envs, initial_knee_angles, graphics_device=None):
     """
     IsaacGym sim + env를 생성하고 초기 무릎 각도를 설정한다.
     반환: sim, envs, actor_handles, dof_pos_all, dof_vel_all, torques
+    graphics_device: None이면 headless(-1), 정수를 넘기면 해당 GPU 인덱스 사용
     """
     sim_params = gymapi.SimParams()
     sim_params.dt = DT
@@ -87,7 +88,11 @@ def create_sim_and_envs(gym, args, num_envs, initial_knee_angles):
     sim_params.physx.rest_offset = 0.0
 
     compute_device = args.compute_device_id
-    graphics_device = -1  # 모든 검증 테스트는 headless
+    if graphics_device is None:
+        graphics_device = -1  # headless: CPU pipeline
+        sim_params.use_gpu_pipeline = False
+    else:
+        sim_params.use_gpu_pipeline = True  # 뷰어: GPU pipeline (step_graphics 필요)
 
     sim = gym.create_sim(compute_device, graphics_device, gymapi.SIM_PHYSX, sim_params)
     assert sim is not None, "Failed to create sim"
@@ -147,7 +152,8 @@ def create_sim_and_envs(gym, args, num_envs, initial_knee_angles):
         dof_pos_all[i, TEST_DOF_IDX] = initial_knee_angles[i]
         dof_vel_all[i, :] = 0.0
 
-    env_ids = torch.arange(num_envs, dtype=torch.int32)
+    _dev = dof_states.device
+    env_ids = torch.arange(num_envs, dtype=torch.int32, device=_dev)
     gym.set_dof_state_tensor_indexed(
         sim,
         gymtorch.unwrap_tensor(dof_states),
@@ -155,7 +161,7 @@ def create_sim_and_envs(gym, args, num_envs, initial_knee_angles):
         num_envs,
     )
 
-    torques = torch.zeros(num_envs * num_dof, dtype=torch.float32)
+    torques = torch.zeros(num_envs * num_dof, dtype=torch.float32, device=_dev)
 
     return sim, envs, actor_handles, dof_pos_all, dof_vel_all, torques, num_dof
 
