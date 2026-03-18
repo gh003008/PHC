@@ -37,6 +37,16 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+import matplotlib.font_manager as fm
+
+# ── 한글 폰트 설정 (NotoSansCJK-KR) ──────────────────────────────
+_FONT_PATH = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+if os.path.exists(_FONT_PATH):
+    fm.fontManager.addfont(_FONT_PATH)
+    _fp = fm.FontProperties(fname=_FONT_PATH)
+    matplotlib.rcParams["font.family"] = "sans-serif"
+    matplotlib.rcParams["font.sans-serif"] = [_fp.get_name()]
+matplotlib.rcParams["axes.unicode_minus"] = False
 
 from standard_human_model.core.muscle_model import HillMuscleModel, MuscleParams
 from standard_human_model.core.moment_arm import MomentArmMatrix
