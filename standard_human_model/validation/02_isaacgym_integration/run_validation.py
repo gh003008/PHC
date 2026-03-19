@@ -25,6 +25,7 @@ import torch
 import numpy as np
 import os
 import sys
+import math
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -89,10 +90,8 @@ def create_sim_and_envs(gym, args, num_envs, initial_knee_angles, graphics_devic
 
     compute_device = args.compute_device_id
     if graphics_device is None:
-        graphics_device = -1  # headless: CPU pipeline
-        sim_params.use_gpu_pipeline = False
-    else:
-        sim_params.use_gpu_pipeline = True  # 뷰어: GPU pipeline (step_graphics 필요)
+        graphics_device = -1
+    sim_params.use_gpu_pipeline = False  # CPU pipeline: viewer + headless 모두 동작
 
     sim = gym.create_sim(compute_device, graphics_device, gymapi.SIM_PHYSX, sim_params)
     assert sim is not None, "Failed to create sim"
@@ -122,7 +121,8 @@ def create_sim_and_envs(gym, args, num_envs, initial_knee_angles, graphics_devic
         env = gym.create_env(sim, env_lower, env_upper, num_envs)
         start_pose = gymapi.Transform()
         start_pose.p = gymapi.Vec3(0.0, 0.0, 2.0)
-        start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+        # XML은 Y-up (MuJoCo) 기준 → IsaacGym Z-up에 맞게 X축 90° 회전
+        start_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(1, 0, 0), math.pi / 2)
         handle = gym.create_actor(env, humanoid_asset, start_pose, f"humanoid_{i}", i, 0, 0)
 
         dof_props = gym.get_actor_dof_properties(env, handle)

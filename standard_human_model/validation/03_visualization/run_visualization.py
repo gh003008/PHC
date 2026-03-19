@@ -132,8 +132,8 @@ def main():
         else:
             gym.viewer_camera_look_at(
                 viewer, None,
-                gymapi.Vec3(12.0, -2.0, 4.0),
-                gymapi.Vec3(0.0,   5.0, 1.5),
+                gymapi.Vec3(0.0, -3.0, 2.0),   # env 0 (Healthy) 바로 옆 3m 근접
+                gymapi.Vec3(0.0,  0.0, 2.0),
             )
             print(f"\n뷰어 켜짐. 'Q' 또는 창 닫기로 종료.\n", flush=True)
 
@@ -164,8 +164,7 @@ def main():
 
         gym.set_dof_actuation_force_tensor(sim, gymtorch.unwrap_tensor(torques))
         gym.simulate(sim)
-        if dof_pos_all.device.type == "cpu":
-            gym.fetch_results(sim, True)
+        gym.fetch_results(sim, True)
 
         if viewer is not None:
             if gym.query_viewer_has_closed(viewer):
