@@ -1,0 +1,317 @@
+# Winter 2009 정규 보행 기준값
+#
+# 출처: Winter, D.A. (2009). Biomechanics and Motor Control of Human Movement,
+#       4th edition. Wiley. Chapter 4~6.
+# 피험자: 건강한 성인, 자유 보행 속도 ~1.4 m/s
+# 단위 규약:
+#   - 각도: degree (deg)
+#   - 힘: BW (Body Weight) 배수, 즉 F / (m × g)
+#   - 토크: BW×m (정규화 체중×신장)
+#   - 파워: BW×m/s
+#   - 보행 사이클: 0~100% (initial contact = 0%, 다음 발 initial contact = 100%)
+#
+# 보행 위상:
+#   입각기 (Stance): 0 ~ 60%
+#     - 하중 수용 (Loading Response): 0 ~ 12%
+#     - 중간 입각 (Mid-Stance): 12 ~ 31%
+#     - 말기 입각 (Terminal Stance): 31 ~ 50%
+#     - 전유각기 (Pre-Swing): 50 ~ 62%
+#   유각기 (Swing): 62 ~ 100%
+#     - 초기 유각 (Initial Swing): 62 ~ 75%
+#     - 중간 유각 (Mid-Swing): 75 ~ 87%
+#     - 말기 유각 (Terminal Swing): 87 ~ 100%
+#
+# 부호 규약 (Winter 2009 기준):
+#   - Hip: + = Flexion, - = Extension
+#   - Knee: + = Flexion, - = Extension
+#   - Ankle: + = Dorsiflexion, - = Plantarflexion
+
+metadata:
+  source: "Winter 2009, Table 4.4, 4.5, Fig 5.1~5.3"
+  subjects: "건강한 성인 (n=19), 남녀 혼합"
+  walking_speed_mps: 1.41
+  step_length_m: 0.77
+  cadence_steps_per_min: 110
+  gait_cycle_duration_s: 1.09
+  stance_pct: 62
+  swing_pct: 38
+  note: "모든 데이터는 gait cycle %로 정규화. 데이터 포인트는 5% 간격."
+
+# ============================================================
+# 관절 각도 (Joint Kinematics)
+# % gait cycle → mean angle (deg)
+# ============================================================
+
+kinematics:
+
+  hip:
+    sign_convention: "positive = flexion (anterior)"
+    unit: deg
+    # [%GC, mean_deg, sd_deg]
+    # Positive peak (initial flexion) ~25° at IC, negative (extension) ~-10° at terminal stance
+    data_pct_mean_sd:
+      - [0,   25.0,  4.0]   # Initial Contact
+      - [5,   25.0,  4.0]
+      - [10,  22.0,  4.0]   # Loading Response
+      - [15,  18.0,  4.0]
+      - [20,  13.0,  4.0]
+      - [25,   8.0,  3.5]
+      - [30,   3.0,  3.5]   # Mid-Stance
+      - [35,  -2.0,  3.5]
+      - [40,  -6.0,  3.0]
+      - [45,  -8.0,  3.0]
+      - [50,  -8.0,  3.0]   # Terminal Stance
+      - [55,  -5.0,  3.0]
+      - [60,   0.0,  3.5]   # Toe-Off / Pre-Swing
+      - [65,   7.0,  4.0]
+      - [70,  14.0,  4.0]   # Initial Swing
+      - [75,  20.0,  4.0]
+      - [80,  25.0,  4.0]   # Mid-Swing
+      - [85,  26.0,  4.0]
+      - [90,  25.0,  4.0]
+      - [95,  24.0,  4.0]   # Terminal Swing
+      - [100, 25.0,  4.0]
+    key_events:
+      max_flexion_pct: 80        # 최대 굴곡 위상 (~80% GC, mid-swing)
+      max_flexion_deg: 26.0
+      max_extension_pct: 45      # 최대 신전 위상
+      max_extension_deg: -8.0
+      ROM_deg: 34.0              # Total range of motion
+
+  knee:
+    sign_convention: "positive = flexion"
+    unit: deg
+    data_pct_mean_sd:
+      - [0,   5.0,  3.0]   # Initial Contact (near full extension)
+      - [5,  10.0,  3.0]
+      - [10, 18.0,  4.0]   # Loading Response peak (1st flexion)
+      - [15, 13.0,  4.0]
+      - [20,  8.0,  3.5]
+      - [25,  4.0,  3.0]
+      - [30,  2.0,  3.0]   # Mid-Stance (nearly full extension)
+      - [35,  2.0,  3.0]
+      - [40,  3.0,  3.0]
+      - [45,  5.0,  3.0]
+      - [50,  8.0,  3.5]   # Terminal Stance
+      - [55, 20.0,  4.0]
+      - [60, 38.0,  5.0]   # Toe-Off (rapid flexion begins)
+      - [65, 52.0,  5.0]
+      - [70, 60.0,  5.0]   # Initial Swing peak (2nd flexion, ~60°)
+      - [75, 56.0,  5.0]
+      - [80, 45.0,  5.0]   # Mid-Swing
+      - [85, 28.0,  4.5]
+      - [90, 15.0,  4.0]
+      - [95,  8.0,  3.5]   # Terminal Swing
+      - [100, 5.0,  3.0]
+    key_events:
+      stance_peak_flexion_pct: 10     # 1차 굴곡 피크 (하중 수용)
+      stance_peak_flexion_deg: 18.0
+      swing_peak_flexion_pct: 70      # 2차 굴곡 피크 (유각기)
+      swing_peak_flexion_deg: 60.0
+      max_extension_pct: 30           # 중간 입각기 최대 신전
+      max_extension_deg: 2.0
+      ROM_deg: 58.0
+
+  ankle:
+    sign_convention: "positive = dorsiflexion, negative = plantarflexion"
+    unit: deg
+    data_pct_mean_sd:
+      - [0,   1.0,  3.0]   # Initial Contact (near neutral)
+      - [5,  -4.0,  3.0]   # Loading Response (controlled plantarflexion)
+      - [10, -5.0,  3.0]
+      - [15, -1.0,  3.0]
+      - [20,  3.0,  3.0]
+      - [25,  7.0,  3.0]   # Mid-Stance (progressive dorsiflexion)
+      - [30, 10.0,  3.0]
+      - [35, 12.0,  3.0]
+      - [40, 13.0,  3.0]
+      - [45, 14.0,  3.0]
+      - [50, 13.0,  3.5]   # Terminal Stance (max dorsiflexion)
+      - [55,  5.0,  3.5]
+      - [60,-15.0,  4.0]   # Toe-Off (max plantarflexion push-off)
+      - [65, -8.0,  4.0]
+      - [70,  0.0,  3.5]   # Initial Swing (recovery)
+      - [75,  4.0,  3.0]
+      - [80,  5.0,  3.0]   # Mid-Swing
+      - [85,  4.0,  3.0]
+      - [90,  3.0,  3.0]
+      - [95,  2.0,  3.0]   # Terminal Swing
+      - [100, 1.0,  3.0]
+    key_events:
+      max_dorsiflexion_pct: 50        # 최대 배측굴곡 (말기 입각)
+      max_dorsiflexion_deg: 13.0
+      max_plantarflexion_pct: 60      # 최대 저측굴곡 (toe-off, push-off)
+      max_plantarflexion_deg: -15.0
+      loading_plantarflexion_pct: 10  # 하중 수용기 초기 저측굴곡
+      loading_plantarflexion_deg: -5.0
+      ROM_deg: 28.0
+
+# ============================================================
+# 지면반력 (Ground Reaction Forces)
+# % gait cycle → GRF / Body Weight
+# 입각기 (0~62%)만 해당, 유각기는 0
+# ============================================================
+
+grf:
+  unit: "BW (F / m*g)"
+  note: "입각기(0~62%)만 값 존재, 나머지 0"
+
+  vertical:
+    description: "수직 GRF (Fz). 전형적 쌍봉(double-peak) 패턴."
+    data_pct_mean_sd:
+      - [0,   0.00, 0.00]   # Heel strike
+      - [2,   0.60, 0.10]   # 빠른 하중 증가
+      - [5,   1.05, 0.08]
+      - [10,  1.20, 0.08]   # 1st peak (하중 수용 피크)
+      - [15,  1.10, 0.07]
+      - [20,  1.00, 0.07]
+      - [25,  0.92, 0.07]
+      - [30,  0.85, 0.07]   # valley (중간 입각 골)
+      - [35,  0.82, 0.07]
+      - [40,  0.85, 0.07]
+      - [45,  0.95, 0.07]
+      - [50,  1.08, 0.08]
+      - [55,  1.12, 0.08]   # 2nd peak (말기 입각 피크)
+      - [58,  1.08, 0.08]
+      - [60,  0.70, 0.10]
+      - [62,  0.00, 0.00]   # Toe-Off
+    key_events:
+      first_peak_pct: 10
+      first_peak_BW: 1.20
+      valley_pct: 32
+      valley_BW: 0.82
+      second_peak_pct: 55
+      second_peak_BW: 1.12
+      toe_off_pct: 62
+
+  anterior_posterior:
+    description: "전후 GRF (Fy). 양수 = 전방(추진), 음수 = 후방(제동)."
+    data_pct_mean_sd:
+      - [0,   0.00, 0.00]
+      - [2,  -0.08, 0.04]   # 초기 제동
+      - [5,  -0.16, 0.04]
+      - [10, -0.18, 0.04]   # 최대 제동력 (braking peak)
+      - [15, -0.15, 0.04]
+      - [20, -0.08, 0.04]
+      - [25, -0.02, 0.03]
+      - [30,  0.02, 0.03]   # 전환점 (제동 → 추진)
+      - [35,  0.07, 0.03]
+      - [40,  0.10, 0.04]
+      - [45,  0.14, 0.04]
+      - [50,  0.18, 0.04]   # 최대 추진력 (propulsive peak)
+      - [55,  0.17, 0.04]
+      - [58,  0.12, 0.04]
+      - [60,  0.05, 0.04]
+      - [62,  0.00, 0.00]
+    key_events:
+      braking_peak_pct: 10
+      braking_peak_BW: -0.18
+      transition_pct: 30          # 제동에서 추진으로 전환
+      propulsive_peak_pct: 50
+      propulsive_peak_BW: 0.18
+
+  mediolateral:
+    description: "내외측 GRF (Fx). 양수 = 외측. 크기는 수직/전후보다 훨씬 작음."
+    data_pct_mean_sd:
+      - [0,   0.00, 0.00]
+      - [10,  0.04, 0.02]   # 초기 외측 성분
+      - [30,  0.03, 0.02]
+      - [50, -0.02, 0.02]   # 내측 전환
+      - [62,  0.00, 0.00]
+
+# ============================================================
+# 관절 토크 (Joint Moments)
+# % gait cycle → moment / (BW × height)
+# 양수 = 굴곡/배측굴곡 우세
+# ============================================================
+
+joint_moments:
+  unit: "BW*m / (body_weight * height)"
+  note: "Winter 2009 Table 4.5 기준. 내부 토크(internal moment) 기준."
+
+  hip:
+    data_pct_mean_sd:
+      - [0,   0.10, 0.04]   # 초기 신전 토크
+      - [10,  0.12, 0.04]
+      - [20,  0.05, 0.04]
+      - [30, -0.03, 0.03]   # 굴곡으로 전환
+      - [40, -0.05, 0.03]
+      - [50, -0.08, 0.04]
+      - [60, -0.10, 0.04]
+      - [70,  0.05, 0.04]
+      - [80,  0.08, 0.04]
+      - [100, 0.10, 0.04]
+
+  knee:
+    data_pct_mean_sd:
+      - [0,   0.05, 0.03]
+      - [10, -0.08, 0.04]   # 신전 토크 (하중 수용)
+      - [20, -0.06, 0.03]
+      - [30, -0.03, 0.03]
+      - [40, -0.01, 0.03]
+      - [50,  0.02, 0.03]
+      - [60,  0.04, 0.03]
+      - [70,  0.01, 0.03]
+      - [80,  0.00, 0.02]
+      - [100, 0.05, 0.03]
+
+  ankle:
+    data_pct_mean_sd:
+      - [0,   0.00, 0.02]
+      - [10,  0.05, 0.03]
+      - [20,  0.10, 0.04]
+      - [30,  0.12, 0.04]   # 저측굴곡 토크 증가
+      - [40,  0.15, 0.04]
+      - [50,  0.18, 0.04]   # 최대 저측굴곡 토크 (push-off)
+      - [55,  0.16, 0.04]
+      - [60,  0.05, 0.03]
+      - [70,  0.00, 0.02]
+      - [100, 0.00, 0.02]
+
+# ============================================================
+# 관절 파워 (Joint Powers)
+# 음수 = 흡수(absorption), 양수 = 생성(generation)
+# ============================================================
+
+joint_powers:
+  unit: "W/kg (watts per kg body mass)"
+
+  ankle:
+    description: "A2: 말기 입각 발목 파워 생성이 보행 추진력의 핵심"
+    key_events:
+      A1_absorption_pct: 10        # 초기 흡수 (하중 수용)
+      A1_absorption_W_per_kg: -0.4
+      A2_generation_pct: 52        # 말기 입각 파워 생성 (push-off)
+      A2_generation_W_per_kg: 3.5  # 가장 큰 파워 이벤트
+      A2_generation_note: "아킬레스건 elastic energy release 포함"
+
+  knee:
+    key_events:
+      K1_generation_pct: 5         # 하중 수용 초기
+      K1_generation_W_per_kg: 0.5
+      K2_absorption_pct: 15        # 하중 수용 흡수
+      K2_absorption_W_per_kg: -0.7
+      K3_generation_pct: 55        # 전유각기 굴곡 시작
+      K3_generation_W_per_kg: 0.8
+
+  hip:
+    key_events:
+      H1_generation_pct: 5         # 초기 입각 신전
+      H1_generation_W_per_kg: 0.9
+      H3_generation_pct: 55        # 전유각기 굴곡
+      H3_generation_W_per_kg: 1.2
+
+# ============================================================
+# 보행 시공간 파라미터 (Spatiotemporal Parameters)
+# ============================================================
+
+spatiotemporal:
+  walking_speed_mps: 1.41
+  step_length_m: 0.77        # 한 발 보폭
+  stride_length_m: 1.54      # 두 발 보폭
+  cadence_steps_per_min: 110
+  gait_cycle_duration_s: 1.09
+  step_width_m: 0.13         # 내외측 간격
+  stance_pct: 62
+  swing_pct: 38
+  double_support_pct: 11     # 양발 지지 구간 (각)

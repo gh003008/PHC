@@ -1,0 +1,324 @@
+# Perry 1992 정규 보행 EMG 타이밍 기준값
+#
+# 출처: Perry, J. (1992). Gait Analysis: Normal and Pathological Function.
+#       SLACK Incorporated. Chapter 4~8.
+#       (2nd ed. Perry & Burnfield 2010도 동일 데이터 기반)
+#
+# 데이터 특성:
+#   - fine-wire EMG + surface EMG 혼용 (근육 종류에 따라)
+#   - "ON" 정의: 최대 EMG의 5% 이상
+#   - 보행 사이클: 0% = Initial Contact (IC), 100% = 다음 IC
+#   - 입각기 0~62%, 유각기 62~100%
+#
+# 단위: % gait cycle
+# 형식: {onset_pct, offset_pct, intensity, phase_description}
+#   intensity: "high" / "moderate" / "low" (활성화 강도)
+#   다중 활성화 구간이 있는 근육은 bursts 리스트 사용
+#
+# CALM 근육군 이름 → Perry EMG 데이터 매핑:
+#   hip_flexors    ← iliacus, psoas (deep hip flexors)
+#   gluteus_max    ← gluteus maximus
+#   hip_abductors  ← gluteus medius + gluteus minimus
+#   hip_adductors  ← adductor longus + magnus
+#   quadriceps     ← vastus lateralis + medialis + intermedius
+#   rectus_femoris ← rectus femoris (bi-articular)
+#   hamstrings     ← biceps femoris + semimembranosus + semitendinosus
+#   gastrocnemius  ← medial + lateral gastrocnemius (bi-articular)
+#   soleus         ← soleus (mono-articular plantar flexor)
+#   tibialis_ant   ← tibialis anterior
+
+metadata:
+  source: "Perry 1992, Gait Analysis: Normal and Pathological Function"
+  supplement: "Kadaba et al. 1989 (J Orthop Res), Winter 2009"
+  subjects: "건강한 성인, 자유 보행 속도"
+  emg_method: "surface EMG (tibialis_ant, gastrocnemius, soleus, quadriceps) + fine-wire (deep muscles)"
+  on_threshold: "5% of maximum voluntary contraction (MVC)"
+  gait_cycle_percent: "0% = Initial Contact, 100% = next Initial Contact"
+  stance_end_pct: 62
+  swing_start_pct: 62
+
+# ============================================================
+# 근육별 EMG 타이밍
+# ============================================================
+
+emg_timing:
+
+  tibialis_anterior:
+    calm_muscle_name: "tibialis_ant_L / tibialis_ant_R"
+    muscle_action: "발목 배측굴곡, 발끝 들기 (foot clearance)"
+    bursts:
+      - name: "Loading Response burst"
+        onset_pct: 0
+        offset_pct: 10
+        intensity: "high"
+        function: "초기 접촉 충격 흡수, heel-rocker 제어"
+        peak_pct: 2
+      - name: "Swing burst"
+        onset_pct: 60
+        offset_pct: 100
+        intensity: "high"
+        function: "유각기 발끝 들기(clearance), IC 준비"
+        peak_pct: 75
+    note: "swing burst가 주된 기능. loading response burst는 짧지만 중요."
+    calm_validation_criteria:
+      activation_on_pct_tolerance: 15   # ±15% GC 허용
+      must_have_swing_burst: true
+      must_have_loading_burst: true
+
+  gluteus_maximus:
+    calm_muscle_name: "gluteus_max_L / gluteus_max_R"
+    muscle_action: "고관절 신전, 몸통 안정화"
+    bursts:
+      - name: "Terminal Swing / Loading Response burst"
+        onset_pct: 90
+        offset_pct: 100
+        intensity: "high"
+        function: "forward swing 감속, IC 준비"
+      - name: "Loading Response continuation"
+        onset_pct: 0
+        offset_pct: 18
+        intensity: "high"
+        function: "상체 전방 기울기 제어, 고관절 안정화"
+        peak_pct: 8
+    note: "terminal swing에서 시작하여 loading response까지 연속적으로 활성"
+    calm_validation_criteria:
+      activation_on_pct_tolerance: 15
+      must_span_IC: true          # IC(0%)를 가로질러야 함
+
+  hip_abductors:
+    calm_muscle_name: "hip_abductors_L / hip_abductors_R"
+    muscle_action: "Trendelenburg 방지, 골반 수평 안정화"
+    bursts:
+      - name: "Stance stabilization burst"
+        onset_pct: 0
+        offset_pct: 32
+        intensity: "high"
+        function: "대측 골반 하강 방지"
+        peak_pct: 12
+      - name: "Late stance / Pre-swing burst"
+        onset_pct: 50
+        offset_pct: 62
+        intensity: "low"
+        function: "toe-off 전 안정화"
+    note: "입각기 초기~중기에 가장 활발. 임상적으로 약화 시 Trendelenburg gait."
+    calm_validation_criteria:
+      activation_on_pct_tolerance: 15
+      primary_phase: "0-32%"
+
+  hip_adductors:
+    calm_muscle_name: "hip_adductors_L / hip_adductors_R"
+    muscle_action: "고관절 내전, 보행 방향 안정화"
+    bursts:
+      - name: "Loading response burst"
+        onset_pct: 0
+        offset_pct: 15
+        intensity: "moderate"
+        function: "대측 하지 ground clearance 지원"
+        peak_pct: 5
+      - name: "Swing burst"
+        onset_pct: 75
+        offset_pct: 100
+        intensity: "moderate"
+        function: "유각기 하지 내측 제어"
+    calm_validation_criteria:
+      activation_on_pct_tolerance: 15
+
+  quadriceps:
+    calm_muscle_name: "quadriceps_L / quadriceps_R"
+    muscle_action: "무릎 신전, 하중 수용 흡수 (eccentric)"
+    note: "vastus group (lateralis, medialis, intermedius). rectus femoris는 별도."
+    bursts:
+      - name: "Loading Response burst (eccentric)"
+        onset_pct: 0
+        offset_pct: 22
+        intensity: "high"
+        function: "무릎 굴곡 제어 (eccentric), 체중 수용"
+        peak_pct: 10
+        contraction_type: "eccentric"
+    secondary_activity:
+      - onset_pct: 88
+        offset_pct: 100
+        intensity: "low"
+        function: "terminal swing 무릎 신전"
+    calm_validation_criteria:
+      activation_on_pct_tolerance: 15
+      must_have_loading_burst: true
+      loading_burst_pct: [0, 22]
+
+  rectus_femoris:
+    calm_muscle_name: "rectus_femoris_L / rectus_femoris_R"
+    muscle_action: "무릎 신전 + 고관절 굴곡 (bi-articular)"
+    note: "bi-articular 근육. quadriceps group과 타이밍 다름에 주의."
+    bursts:
+      - name: "Pre-Swing / Initial Swing burst"
+        onset_pct: 50
+        offset_pct: 68
+        intensity: "moderate"
+        function: "고관절 굴곡 가속, 무릎 굴곡 제어 (eccentric)"
+        peak_pct: 60
+      - name: "Terminal Swing burst"
+        onset_pct: 88
+        offset_pct: 100
+        intensity: "low"
+        function: "무릎 신전 완성"
+    note_2: "quadriceps보다 toe-off 직후에 활성. bi-articular 역할이 핵심."
+    calm_validation_criteria:
+      activation_on_pct_tolerance: 15
+      must_have_preswing_burst: true
+
+  hamstrings:
+    calm_muscle_name: "hamstrings_L / hamstrings_R"
+    muscle_action: "무릎 굴곡 + 고관절 신전 (bi-articular). swing 감속."
+    note: "biceps femoris + semimembranosus + semitendinosus 합산"
+    bursts:
+      - name: "Terminal Swing burst (deceleration)"
+        onset_pct: 88
+        offset_pct: 100
+        intensity: "high"
+        function: "전방 swing 감속 (eccentric knee extension)"
+        contraction_type: "eccentric"
+      - name: "Loading Response burst"
+        onset_pct: 0
+        offset_pct: 12
+        intensity: "high"
+        function: "고관절 신전 토크 생성, IC 안정화"
+        peak_pct: 5
+    note_2: "Terminal swing에서 시작하여 loading response까지 연속 활성. bi-articular coupling 핵심."
+    calm_validation_criteria:
+      activation_on_pct_tolerance: 15
+      must_span_IC: true
+      primary_burst_pct: [88, 12]    # 100%를 넘어 wrapping
+
+  gastrocnemius:
+    calm_muscle_name: "gastrocnemius_L / gastrocnemius_R"
+    muscle_action: "발목 저측굴곡 + 무릎 굴곡 (bi-articular). Push-off 핵심."
+    bursts:
+      - name: "Stance burst (propulsive)"
+        onset_pct: 12
+        offset_pct: 52
+        intensity: "high"
+        function: "무릎 굴곡 제어 (eccentric) + 발목 저측굴곡 (push-off)"
+        peak_pct: 45
+        note: "에너지 transfer: 무릎에서 흡수 → 발목으로 전달 (bi-articular 핵심 역할)"
+    calm_validation_criteria:
+      activation_on_pct_tolerance: 15
+      must_have_stance_burst: true
+      stance_burst_pct: [12, 52]
+      peak_approx_pct: 45
+
+  soleus:
+    calm_muscle_name: "soleus_L / soleus_R"
+    muscle_action: "발목 저측굴곡 (mono-articular). 주요 추진력 + 전방 경사 제어."
+    note: "gastrocnemius보다 조금 이르게 활성화, 더 오래 지속"
+    bursts:
+      - name: "Stance burst (weight bearing)"
+        onset_pct: 8
+        offset_pct: 58
+        intensity: "high"
+        function: "tibia 전방 경사 제어 (eccentric), push-off 추진"
+        peak_pct: 48
+        note: "Type I slow-twitch 우세 → 긴 활성 지속시간"
+    calm_validation_criteria:
+      activation_on_pct_tolerance: 15
+      must_have_stance_burst: true
+      stance_burst_pct: [8, 58]
+      longer_than_gastrocnemius: true    # soleus > gastrocnemius 활성 기간
+
+# ============================================================
+# 보행 위상별 주요 근육 요약
+# (EMG 타이밍 시각화 시 참조용)
+# ============================================================
+
+phase_summary:
+  loading_response:     # 0 ~ 12%
+    active_muscles:
+      - tibialis_ant      # OFF 직후
+      - gluteus_max       # 계속
+      - hip_abductors     # 강하게
+      - quadriceps        # 강하게 (eccentric)
+      - hamstrings        # 강하게
+  mid_stance:           # 12 ~ 31%
+    active_muscles:
+      - hip_abductors     # 계속 (약해짐)
+      - soleus            # 시작
+      - gastrocnemius     # 시작
+  terminal_stance:      # 31 ~ 50%
+    active_muscles:
+      - soleus            # 강하게
+      - gastrocnemius     # 강하게
+  pre_swing:            # 50 ~ 62%
+    active_muscles:
+      - soleus            # 감소
+      - gastrocnemius     # 감소
+      - rectus_femoris    # 시작
+  initial_swing:        # 62 ~ 75%
+    active_muscles:
+      - tibialis_ant      # 강하게 (clearance)
+      - rectus_femoris    # 감소
+  mid_swing:            # 75 ~ 87%
+    active_muscles:
+      - tibialis_ant      # 계속
+  terminal_swing:       # 87 ~ 100%
+    active_muscles:
+      - tibialis_ant      # 계속
+      - hamstrings        # 강하게 (deceleration)
+      - gluteus_max       # 시작
+      - quadriceps        # 약하게
+
+# ============================================================
+# 보충 자료: Kadaba et al. 1989 EMG 정량 데이터
+# (Perry 1992의 정성적 데이터를 보완하는 정량 기준)
+# 출처: Kadaba MP et al. (1989). J Orthop Res 7(6):849-860.
+# ============================================================
+
+kadaba1989_supplement:
+  note: "정규화된 EMG 크기 (% MVC, mean ± SD). Winter 2009와 함께 사용."
+  subjects: "건강한 성인 (n=40)"
+
+  peak_emg_pct_MVC:
+    tibialis_ant:   {pct: 75,  peak_MVC: 25, phase: "swing"}
+    soleus:         {pct: 45,  peak_MVC: 35, phase: "terminal stance"}
+    gastrocnemius:  {pct: 45,  peak_MVC: 28, phase: "terminal stance"}
+    quadriceps:     {pct: 10,  peak_MVC: 30, phase: "loading response"}
+    hamstrings:     {pct: 95,  peak_MVC: 22, phase: "terminal swing"}
+    gluteus_max:    {pct: 8,   peak_MVC: 28, phase: "loading response"}
+    hip_abductors:  {pct: 12,  peak_MVC: 35, phase: "loading response"}
+
+# ============================================================
+# 병리 보행 EMG 패턴 참조
+# (L5 검증에서 사용)
+# ============================================================
+
+pathological_patterns:
+
+  stroke_hemiplegia:
+    source: "Perry 1992, Chapter 15. Stroke."
+    affected_side_changes:
+      tibialis_ant:
+        change: "활성화 감소 또는 소실"
+        consequence: "foot drop → toe dragging"
+      quadriceps:
+        change: "활성화 증가 + 유각기까지 지속 (premature activity)"
+        consequence: "stiff knee gait"
+      hamstrings:
+        change: "co-contraction 증가"
+        consequence: "무릎 굴곡 제한"
+      gastrocnemius:
+        change: "활성화 이른 시작 + 과활성 (spastic)"
+        consequence: "equinus gait"
+    emg_pattern_difference_vs_normal:
+      timing_delay_ms: 0            # 경직은 타이밍 지연이 아닌 과활성
+      cocontraction_increase: true
+
+  parkinson:
+    source: "Knutsson 1972, Pedersen et al. 1991"
+    changes:
+      all_muscles:
+        change: "활성화 감소 (bradykinesia)"
+        amplitude_ratio_vs_normal: 0.6   # ~60% of normal
+      tibialis_ant:
+        change: "swing burst 감소"
+        consequence: "감소된 foot clearance"
+      gastrocnemius_soleus:
+        change: "push-off 감소"
+        consequence: "reduced propulsion, shuffling"

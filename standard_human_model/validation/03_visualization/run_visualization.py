@@ -27,25 +27,26 @@ IsaacGym 뷰어에서 세 환자 프로파일(Healthy / Spastic / Flaccid)의
 """
 
 # CRITICAL: IsaacGym must be imported before torch
+import sys
 from isaacgym import gymapi, gymtorch, gymutil
 import torch
 import numpy as np
 import os
-import sys
 from collections import deque
 
-# matplotlib 백엔드: 뷰어 모드 → TkAgg(interactive), headless → Agg
 import matplotlib
 _is_headless = "--headless" in sys.argv
-matplotlib.use("Agg" if _is_headless else "TkAgg")
-import matplotlib.pyplot as plt
-matplotlib.rcParams["font.family"] = "Noto Sans CJK JP"
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 
 VAL_DIR = os.path.join(os.path.dirname(__file__), "../02_isaacgym_integration")
 sys.path.insert(0, VAL_DIR)
 from run_validation import create_sim_and_envs, make_human_body
+
+# run_validation.py가 matplotlib.use("Agg")를 호출하므로 그 이후에 강제 재설정
+matplotlib.use("Agg" if _is_headless else "TkAgg", force=True)
+import matplotlib.pyplot as plt
+matplotlib.rcParams["font.family"] = "Noto Sans CJK JP"
 
 from standard_human_model.core.skeleton import JOINT_DOF_RANGE
 
@@ -79,9 +80,9 @@ COLORS_PLOT = ["#2196F3", "#F44336", "#4CAF50"]
 # ═══════════════════════════════════════════════════════════════════════════════
 
 MONITOR_SIGNALS = {
-    "angle":  ("L_Knee 각도",  "deg"),
-    "torque": ("Bio-Torque",  "Nm"),
-    "vel":    ("L_Knee 속도",  "rad/s"),
+    "angle":  ("L_Knee Angle",    "deg"),
+    "torque": ("Bio-Torque",      "Nm"),
+    "vel":    ("L_Knee Velocity", "rad/s"),
 }
 DEFAULT_MONITOR     = "angle,torque,vel"
 MONITOR_WINDOW_SECS = 10.0   # 롤링 윈도우 길이 (초)
@@ -108,7 +109,7 @@ class RealtimeMonitor:
         self.fig, axes = plt.subplots(
             n_sigs, 1, figsize=(7, 2.6 * n_sigs), sharex=True
         )
-        self.fig.suptitle("실시간 모니터 — 무릎 진자", fontsize=11, y=0.98)
+        self.fig.suptitle("Realtime Monitor — Knee Pendulum", fontsize=11, y=0.98)
         self.axes = [axes] if n_sigs == 1 else list(axes)
 
         self.lines = {}
@@ -127,15 +128,10 @@ class RealtimeMonitor:
         self.axes[-1].set_xlabel("Time (s)", fontsize=9)
         plt.tight_layout(rect=[0, 0, 1, 0.96])
 
-        # 모니터 창을 IsaacGym 뷰어(1280px) 오른쪽에 배치
-        try:
-            mgr = self.fig.canvas.manager
-            mgr.window.geometry("+1290+0")
-        except Exception:
-            pass
-
+        plt.show(block=False)
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
+        plt.pause(0.1)  # 창이 실제로 뜨도록 충분히 대기
 
     def push(self, t, values):
         """values: {signal_key: {profile_name: float}}"""
@@ -148,12 +144,15 @@ class RealtimeMonitor:
         if not self.t_buf:
             return
         ts = list(self.t_buf)
+        t_now = ts[-1]
+        t_lo  = max(ts[0], t_now - MONITOR_WINDOW_SECS)
         for i, key in enumerate(self.keys):
             ax = self.axes[i]
             for name in self.names:
                 self.lines[key][name].set_data(ts, list(self.bufs[key][name]))
             ax.relim()
-            ax.autoscale_view()
+            ax.autoscale_view(scalex=False)
+            ax.set_xlim(t_lo, t_now + 0.5)
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
         plt.pause(0.001)

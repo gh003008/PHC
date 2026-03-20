@@ -27,7 +27,10 @@ import os
 import sys
 import math
 import matplotlib
-matplotlib.use("Agg")
+# 백엔드가 아직 기본값(non-interactive)일 때만 Agg로 설정
+# (run_visualization.py 등에서 import될 때 TkAgg를 덮어쓰지 않도록)
+if matplotlib.get_backend().lower() in ("agg", ""):
+    matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
