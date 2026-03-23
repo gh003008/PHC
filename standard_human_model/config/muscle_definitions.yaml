@@ -7,6 +7,9 @@
 #   양수 = 관절 양방향(+) 토크, 음수 = 음방향(-) 토크
 #   SMPL에서 x축이 주 운동축 (flexion/extension)
 #
+# l_slack: 관절 중립(0°) 시 근건 단위(MTU) 전체 길이 (meters)
+#   l_slack ≈ l_opt * cos(pennation) + l_tendon_slack  (Rajagopal 2016)
+#
 # 참고: OpenSim Rajagopal 2016 모델 기반 근사값
 #       실제 moment arm은 관절각 의존이지만, 여기서는 대표값 사용
 
@@ -18,45 +21,45 @@ muscles:
   # --- 고관절 ---
   - name: "hip_flexors_L"          # 장요근(iliopsoas) + 대퇴근막장근
     type: "mono-articular"
-    l_slack: 0.30
+    l_slack: 0.232                  # 0.100*cos(0.14) + 0.133
     moment_arms:
       L_Hip: [0.04, 0, 0]          # 고관절 굴곡 (+x)
 
   - name: "gluteus_max_L"          # 대둔근
     type: "mono-articular"
-    l_slack: 0.25
+    l_slack: 0.266                  # 0.142*cos(0.09) + 0.125
     moment_arms:
       L_Hip: [-0.06, 0, 0]         # 고관절 신전 (-x)
 
   - name: "hip_abductors_L"        # 중둔근 + 소둔근
     type: "mono-articular"
-    l_slack: 0.15
+    l_slack: 0.118                  # 0.054*cos(0.14) + 0.065
     moment_arms:
       L_Hip: [0, 0.05, 0]          # 고관절 외전 (+y)
 
   - name: "hip_adductors_L"        # 내전근군
     type: "mono-articular"
-    l_slack: 0.20
+    l_slack: 0.247                  # 0.138*cos(0.09) + 0.110
     moment_arms:
       L_Hip: [0, -0.04, 0]         # 고관절 내전 (-y)
 
   # --- 대퇴 (bi-articular) ---
   - name: "quadriceps_L"           # 대퇴사두근 (내측광근+외측광근+중간광근)
     type: "mono-articular"         # vastii 부분 (단관절)
-    l_slack: 0.25
+    l_slack: 0.235                  # 0.099*cos(0.09) + 0.136
     moment_arms:
       L_Knee: [-0.04, 0, 0]        # 무릎 신전 (-x, knee x축은 굴곡이 +)
 
   - name: "rectus_femoris_L"       # 대퇴직근 (이관절근!)
     type: "bi-articular"
-    l_slack: 0.35
+    l_slack: 0.422                  # 0.076*cos(0.09) + 0.346
     moment_arms:
       L_Hip: [0.03, 0, 0]          # 고관절 굴곡
       L_Knee: [-0.04, 0, 0]        # 무릎 신전
 
   - name: "hamstrings_L"           # 반건양근 + 반막양근 + 대퇴이두근 (이관절근!)
     type: "bi-articular"
-    l_slack: 0.35
+    l_slack: 0.434                  # 0.109*cos(0.12) + 0.326
     moment_arms:
       L_Hip: [-0.06, 0, 0]         # 고관절 신전
       L_Knee: [0.03, 0, 0]         # 무릎 굴곡
@@ -64,20 +67,20 @@ muscles:
   # --- 하퇴 ---
   - name: "gastrocnemius_L"        # 비복근 (이관절근!)
     type: "bi-articular"
-    l_slack: 0.30
+    l_slack: 0.457                  # 0.051*cos(0.30) + 0.408
     moment_arms:
       L_Knee: [0.02, 0, 0]         # 무릎 굴곡 (약함)
       L_Ankle: [-0.05, 0, 0]       # 발목 족저굴 (-x)
 
   - name: "soleus_L"               # 가자미근 (단관절)
     type: "mono-articular"
-    l_slack: 0.25
+    l_slack: 0.300                  # 0.044*cos(0.44) + 0.260
     moment_arms:
       L_Ankle: [-0.05, 0, 0]       # 발목 족저굴
 
   - name: "tibialis_ant_L"         # 전경골근
     type: "mono-articular"
-    l_slack: 0.25
+    l_slack: 0.290                  # 0.068*cos(0.17) + 0.223
     moment_arms:
       L_Ankle: [0.03, 0, 0]        # 발목 배굴 (+x)
 
@@ -86,64 +89,64 @@ muscles:
   # =========================================================================
   - name: "hip_flexors_R"
     type: "mono-articular"
-    l_slack: 0.30
+    l_slack: 0.232
     moment_arms:
       R_Hip: [0.04, 0, 0]
 
   - name: "gluteus_max_R"
     type: "mono-articular"
-    l_slack: 0.25
+    l_slack: 0.266
     moment_arms:
       R_Hip: [-0.06, 0, 0]
 
   - name: "hip_abductors_R"
     type: "mono-articular"
-    l_slack: 0.15
+    l_slack: 0.118
     moment_arms:
       R_Hip: [0, 0.05, 0]
 
   - name: "hip_adductors_R"
     type: "mono-articular"
-    l_slack: 0.20
+    l_slack: 0.247
     moment_arms:
       R_Hip: [0, -0.04, 0]
 
   - name: "quadriceps_R"
     type: "mono-articular"
-    l_slack: 0.25
+    l_slack: 0.235
     moment_arms:
       R_Knee: [-0.04, 0, 0]
 
   - name: "rectus_femoris_R"
     type: "bi-articular"
-    l_slack: 0.35
+    l_slack: 0.422
     moment_arms:
       R_Hip: [0.03, 0, 0]
       R_Knee: [-0.04, 0, 0]
 
   - name: "hamstrings_R"
     type: "bi-articular"
-    l_slack: 0.35
+    l_slack: 0.434
     moment_arms:
       R_Hip: [-0.06, 0, 0]
       R_Knee: [0.03, 0, 0]
 
   - name: "gastrocnemius_R"
     type: "bi-articular"
-    l_slack: 0.30
+    l_slack: 0.457
     moment_arms:
       R_Knee: [0.02, 0, 0]
       R_Ankle: [-0.05, 0, 0]
 
   - name: "soleus_R"
     type: "mono-articular"
-    l_slack: 0.25
+    l_slack: 0.300
     moment_arms:
       R_Ankle: [-0.05, 0, 0]
 
   - name: "tibialis_ant_R"
     type: "mono-articular"
-    l_slack: 0.25
+    l_slack: 0.290
     moment_arms:
       R_Ankle: [0.03, 0, 0]
 

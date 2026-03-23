@@ -85,11 +85,14 @@ class LigamentModel:
         """
         # 상한 초과 → 음의 토크 (복원)
         excess_upper = torch.clamp(dof_pos - self.soft_upper, min=0)
-        tau_upper = -self.k_lig * (torch.exp(self.alpha * excess_upper) - 1)
+        # exp 인자를 clamp하여 overflow 방지 (exp(50) ≈ 5e21, 충분히 큰 복원력)
+        exp_arg_upper = torch.clamp(self.alpha * excess_upper, max=50.0)
+        tau_upper = -self.k_lig * (torch.exp(exp_arg_upper) - 1)
 
         # 하한 초과 → 양의 토크 (복원)
         excess_lower = torch.clamp(self.soft_lower - dof_pos, min=0)
-        tau_lower = self.k_lig * (torch.exp(self.alpha * excess_lower) - 1)
+        exp_arg_lower = torch.clamp(self.alpha * excess_lower, max=50.0)
+        tau_lower = self.k_lig * (torch.exp(exp_arg_lower) - 1)
 
         # 경계 근처 감쇠 (진동 방지)
         in_upper_zone = excess_upper > 0

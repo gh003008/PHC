@@ -52,11 +52,20 @@ class ReflexController:
     """
 
     def __init__(self, num_muscles: int, num_envs: int, device: str = "cpu",
-                 reflex_delay_steps: int = 1):
+                 reflex_delay_steps: int = 5, dt: float = 1.0 / 120.0):
+        """
+        Args:
+            reflex_delay_steps: 반사 지연 스텝 수.
+                기본값 5 = ~40ms @ dt=1/120s (척수 반사弓 지연 25~60ms).
+                reflex_delay_steps=0 이면 지연 없음.
+            dt: 시뮬레이션 타임스텝 (초). 정보 기록용.
+        """
         self.num_muscles = num_muscles
         self.num_envs = num_envs
         self.device = device
         self.reflex_delay_steps = reflex_delay_steps
+        self.dt = dt
+        self.reflex_delay_ms = reflex_delay_steps * dt * 1000  # 기록용
 
         # 반사 파라미터 (num_muscles,)
         self.stretch_gain = torch.ones(num_muscles, device=device)
@@ -70,9 +79,12 @@ class ReflexController:
         self.antagonist_map = torch.full((num_muscles,), -1, dtype=torch.long, device=device)
 
         # 지연 버퍼 (stretch reflex 시간 지연용)
+        # buffer 크기 = delay_steps + 1 (write slot과 read slot이 겹치지 않도록)
+        buf_size = max(reflex_delay_steps + 1, 1)
         self._delay_buffer = torch.zeros(
-            reflex_delay_steps, num_envs, num_muscles, device=device
+            buf_size, num_envs, num_muscles, device=device
         )
+        self._buf_size = buf_size
         self._buffer_idx = 0
 
     def set_params(self, params_per_muscle: Dict[int, ReflexParams]):
@@ -146,19 +158,22 @@ class ReflexController:
         return torch.clamp(a_total, 0, 1)
 
     def _apply_delay(self, signal: torch.Tensor) -> torch.Tensor:
-        """반사 신호에 시간 지연 적용 (circular buffer)."""
+        """반사 신호에 시간 지연 적용 (circular buffer).
+
+        delay_steps=5 → 5스텝 전 신호를 반환 (~40ms @ dt=1/120s).
+        """
         if self.reflex_delay_steps <= 0:
             return signal
 
         # 현재 신호를 버퍼에 저장
         self._delay_buffer[self._buffer_idx] = signal
 
-        # 지연된 신호 읽기
-        delayed_idx = (self._buffer_idx + 1) % self.reflex_delay_steps
+        # 지연된 신호 읽기: delay_steps만큼 과거 slot
+        delayed_idx = (self._buffer_idx - self.reflex_delay_steps) % self._buf_size
         delayed_signal = self._delay_buffer[delayed_idx].clone()
 
         # 인덱스 전진
-        self._buffer_idx = (self._buffer_idx + 1) % self.reflex_delay_steps
+        self._buffer_idx = (self._buffer_idx + 1) % self._buf_size
 
         return delayed_signal
 

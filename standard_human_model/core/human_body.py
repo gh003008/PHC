@@ -245,7 +245,7 @@ class HumanBody:
         )
 
         # 6. Torque mapping: τ = R^T @ F (bi-articular coupling 자동 발생)
-        tau_muscle = self.moment_arm.forces_to_torques(F_muscle)
+        tau_muscle = self.moment_arm.forces_to_torques(F_muscle, dof_pos)
 
         # 7. Ligament forces
         tau_ligament = self.ligament.compute_torque(dof_pos, dof_vel)

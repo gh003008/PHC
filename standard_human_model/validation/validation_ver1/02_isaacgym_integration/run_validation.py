@@ -378,14 +378,14 @@ def test_I03(gym, args):
     PROFILES = [
         {"name": "Healthy",         "color": "#2196F3", "mods": {}},
         {"name": "Spastic (Stroke)","color": "#F44336", "mods": {
-            "reflex":   {"stretch_gain": 8.0,  "stretch_threshold": 0.02},
-            "ligament": {"k_lig": 200.0, "damping": 25.0, "alpha": 15.0},
-            "muscle":   {"damping_scale": 3.0},
+            "reflex":   {"stretch_gain": 15.0,  "stretch_threshold": 0.01},
+            "ligament": {"k_lig": 300.0, "damping": 40.0, "alpha": 18.0},
+            "muscle":   {"damping_scale": 5.0},
         }},
         {"name": "Flaccid (SCI)",   "color": "#4CAF50", "mods": {
             "reflex":   {"stretch_gain": 0.0,  "stretch_threshold": 999.0},
-            "ligament": {"k_lig": 5.0,   "damping": 0.5,  "alpha": 5.0},
-            "muscle":   {"f_max_scale": 0.05, "damping_scale": 0.1},
+            "ligament": {"k_lig": 3.0,   "damping": 0.2,  "alpha": 3.0},
+            "muscle":   {"f_max_scale": 0.005, "damping_scale": 0.05},
         }},
     ]
     INITIAL_ANGLE = 1.4   # 80°
@@ -530,14 +530,14 @@ def test_I04(gym, args):
     PROFILES = [
         {"name": "Healthy",         "mods": {}},
         {"name": "Spastic (Stroke)","mods": {
-            "reflex":   {"stretch_gain": 8.0,  "stretch_threshold": 0.02},
-            "ligament": {"k_lig": 200.0, "damping": 25.0, "alpha": 15.0},
-            "muscle":   {"damping_scale": 3.0},
+            "reflex":   {"stretch_gain": 15.0,  "stretch_threshold": 0.01},
+            "ligament": {"k_lig": 300.0, "damping": 40.0, "alpha": 18.0},
+            "muscle":   {"damping_scale": 5.0},
         }},
         {"name": "Flaccid (SCI)",   "mods": {
             "reflex":   {"stretch_gain": 0.0,  "stretch_threshold": 999.0},
-            "ligament": {"k_lig": 5.0,   "damping": 0.5,  "alpha": 5.0},
-            "muscle":   {"f_max_scale": 0.05, "damping_scale": 0.1},
+            "ligament": {"k_lig": 3.0,   "damping": 0.2,  "alpha": 3.0},
+            "muscle":   {"f_max_scale": 0.005, "damping_scale": 0.05},
         }},
     ]
     COLORS = ["#2196F3", "#F44336", "#4CAF50"]
