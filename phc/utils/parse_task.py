@@ -39,6 +39,7 @@ from phc.env.tasks.humanoid_im_mcp_demo import HumanoidImMCPDemo
 from phc.env.tasks.humanoid_im_mcp_vic import HumanoidImMCPVIC
 from phc.env.tasks.humanoid_im_vic import HumanoidImVIC
 from phc.env.tasks.humanoid_im_vic_msk import HumanoidImVICMSK
+from phc.env.tasks.humanoid_im_calm import HumanoidImCALM
 
 
 from isaacgym import rlgpu
