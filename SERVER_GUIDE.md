@@ -72,13 +72,21 @@ pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorc
 cd ~/isaacgym/python
 pip install -e .
 
-# 4) Install PHC (editable)
+# 4) Install smpl-sim from GitHub (NOT in YAML — must install from git)
+pip install git+https://github.com/ZhengyiLuo/SMPLSim.git@master
+
+# 5) Install PHC (editable) — also installs remaining deps from requirement.txt
 cd ~/PHC
 pip install -e .
+# If smpl-sim wasn't picked up above, also run:
+# pip install -r requirement.txt
 
-# 5) Verify GPU
+# 6) Verify GPU
 python -c "import torch; print('CUDA:', torch.cuda.is_available(), 'GPUs:', torch.cuda.device_count())"
 # Expect: CUDA: True GPUs: 4
+
+# 7) Verify smpl_sim importable
+python -c "import smpl_sim; print('smpl_sim OK:', smpl_sim.__file__)"
 ```
 
 ---
