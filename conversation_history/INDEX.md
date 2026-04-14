@@ -8,3 +8,4 @@
 - [260414_orientation_fix_note.md](260414_orientation_fix_note.md) — Root orientation 버그 수정 기술 상세 + AMASS 비교 실험 계획
 - [260414_1115_session.md](260414_1115_session.md) — AMASS도 학습 실패 확인, 원인 재진단(VIC config 의심), VIC off 진단 실험 시작
 - [260414_1300_session.md](260414_1300_session.md) — Config 축소가 진짜 원인 확정, EXOLAB 서버 이전 결정, jiminyoun 계정 생성, GitHub 하이브리드 워크플로우 확립
+- [260414_1700_session.md](260414_1700_session.md) — 서버 SSH key + git clone + data rsync 완료, SERVER_GUIDE.md 작성으로 서버 Claude 문서 체계 구축

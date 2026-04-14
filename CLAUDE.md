@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code when working with this repository.
 
+## Environment Detection (IMPORTANT — read first)
+
+- **If `hostname` is `server1` (EXOLAB GPU server)**: read [`SERVER_GUIDE.md`](./SERVER_GUIDE.md) before doing anything. It describes Slurm submission, env setup, data layout, and resource limits. **Never run training directly in SSH shell** — always use `sbatch`.
+- **If local machine (`exolab-MS-7D56`)**: GPU is 7.6 GB (limits config size). Original PHC config will OOM — use the shrunk `im_walk_mpl` / `env_im_walk_mpl` variants, or migrate experiments to the server.
+- **Session history** is shared across environments via `conversation_history/` in this repo. Read `conversation_history/INDEX.md` at session start.
+
 ## Project Rules (from `.agent/rules/code-command.md`)
 
 **Always read `.agent/rules/code-command.md` before starting work.**
