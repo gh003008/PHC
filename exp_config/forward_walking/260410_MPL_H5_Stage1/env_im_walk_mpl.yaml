@@ -1,12 +1,12 @@
-project_name: "PHC_Walk_Baseline"
-notes: "Pure PHC Single Primitive Walking Task - Focused on subset"
+project_name: "PHC_Walk_MPL"
+notes: "Motion Plan Layer - H5 real walking data from Vicon PiG"
 
 disable_multiprocessing: False
 
 env:
-  motion_file: "sample_data/amass_isaac_walking_primitive.pkl"
-  num_envs: 512
-  numEnvs: 512
+  motion_file: "sample_data/h5_motion_library.pkl"
+  num_envs: 32
+  numEnvs: 32
   env_spacing: 5
   envSpacing: 5
   episode_length: 300
@@ -48,7 +48,7 @@ env:
   controlFrequencyInv: 2  # 30 Hz
   # VIC (Variable Impedance Control) Settings
   vic_enabled: True
-  vic_curriculum_stage: 2 # Stage 1: Fixed CCF, Stage 2: Learnable CCF
+  vic_curriculum_stage: 1 # Stage 1 first: Fixed CCF, warm-up on new H5 motion data
   vic_metabolic_reward_w: 0.01
   vic_ccf_min: -1.0 # 0.5x stiffness
   vic_ccf_max: 1.0  # 2.0x stiffness
@@ -69,7 +69,7 @@ env:
   
   stateInit: "Random"
   hybridInitProb: 0.5
-  numAMPObsSteps: 10
+  numAMPObsSteps: 2
 
   local_root_obs: True
   root_height_obs: True

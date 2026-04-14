@@ -1,12 +1,12 @@
-project_name: "PHC_Walk_Baseline"
-notes: "Pure PHC Single Primitive Walking Task - Focused on subset"
+project_name: "PHC_Walk_MPL_v2"
+notes: "Motion Plan Layer v2 - HumanoidImMPL task with command obs + enhanced rewards"
 
 disable_multiprocessing: False
 
 env:
-  motion_file: "sample_data/amass_isaac_walking_primitive.pkl"
-  num_envs: 512
-  numEnvs: 512
+  motion_file: "sample_data/h5_motion_library.pkl"
+  num_envs: 64
+  numEnvs: 64
   env_spacing: 5
   envSpacing: 5
   episode_length: 300
@@ -30,7 +30,7 @@ env:
   ######## Getup Configs ########
   zero_out_far: True
   zero_out_far_train: False
-  cycle_motion: False
+  cycle_motion: True
   getup_udpate_epoch: 1000
   getup_schedule: False
   recoverySteps: 90
@@ -48,7 +48,7 @@ env:
   controlFrequencyInv: 2  # 30 Hz
   # VIC (Variable Impedance Control) Settings
   vic_enabled: True
-  vic_curriculum_stage: 2 # Stage 1: Fixed CCF, Stage 2: Learnable CCF
+  vic_curriculum_stage: 1 # Stage 1 first: Fixed CCF, warm-up on new H5 motion data
   vic_metabolic_reward_w: 0.01
   vic_ccf_min: -1.0 # 0.5x stiffness
   vic_ccf_max: 1.0  # 2.0x stiffness
@@ -66,10 +66,25 @@ env:
   reward_w_stage1_disc: 0.3
   reward_w_stage2_task: 0.3
   reward_w_stage2_disc: 0.7
-  
+
+  # MPL (Motion Plan Layer) Settings — Phase 1: interface-ready monolithic policy
+  mpl_enabled: True
+  mpl_command_obs: True           # adds 4 dims (v_x, v_y, yaw_rate, |v|) to task obs
+  mpl_cmd_reward_w: 0.3           # weight on command-tracking reward
+  mpl_contact_reward_w: 0.1       # weight on foot-slip penalty (exp shaping)
+  mpl_smoothness_reward_w: 0.05   # weight on joint-acceleration penalty
+  mpl_contact_threshold: 10.0     # N — force threshold for stance detection
+  mpl_cmd_sigma: 0.25             # m/s, rad/s — exp-reward bandwidth for command
+
+  # Phase 2 — Stability Margin Alpha
+  mpl_alpha_obs: True             # adds 1 dim to task obs
+  mpl_alpha_scale: 0.2            # m — XCoM safety buffer for alpha 0→1 mapping
+  mpl_alpha_polygon_margin: 0.05  # m — outward expansion of support polygon AABB
+  mpl_balance_reward_w: 0.15      # alpha-weighted upright reward
+
   stateInit: "Random"
   hybridInitProb: 0.5
-  numAMPObsSteps: 10
+  numAMPObsSteps: 2
 
   local_root_obs: True
   root_height_obs: True

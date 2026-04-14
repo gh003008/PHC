@@ -115,6 +115,9 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
         self._vic_phase_obs = cfg["env"].get("vic_phase_obs", False)
         # VIC: Biomechanical CCF reward (contact-force based stance/swing CCF guidance)
         self._vic_bio_ccf_reward_w = cfg["env"].get("vic_bio_ccf_reward_w", 0.0)
+        # Foot position imitation reward (extra foot tracking to reduce sliding/dropping)
+        self._foot_pos_reward_w = cfg["env"].get("foot_pos_reward_w", 0.0)
+        self._foot_pos_reward_k = cfg["env"].get("foot_pos_reward_k", 40.0)
 
         if self._vic_enabled:
             print(f"[{self.__class__.__name__}] VIC Enabled. Stage: {self._vic_curriculum_stage}")
@@ -144,8 +147,18 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
             self._ccf_group_dof_map = self._build_ccf_group_dof_map()
 
         # Overriding
-        self.reward_raw = torch.zeros((self.num_envs, 5 if self.power_reward else 4)).to(self.device)
+        n_reward_cols = 4
+        if self.power_reward:
+            n_reward_cols += 1
+        if self._foot_pos_reward_w > 0:
+            n_reward_cols += 1
+        self.reward_raw = torch.zeros((self.num_envs, n_reward_cols)).to(self.device)
         self.power_coefficient = cfg["env"].get("power_coefficient", 0.0005)
+
+        # Foot position reward: build foot body IDs
+        if self._foot_pos_reward_w > 0:
+            self._foot_body_ids = self._build_key_body_ids_tensor(["L_Ankle", "R_Ankle", "L_Toe", "R_Toe"])
+            print(f"[{self.__class__.__name__}] Foot Pos Reward: w={self._foot_pos_reward_w}, k={self._foot_pos_reward_k}, bodies={self._foot_body_ids.tolist()}")
 
         if (not self.headless or flags.server_mode):
             self._build_marker_state_tensors()
@@ -172,23 +185,37 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
         return self._num_actions
 
     def _build_ccf_group_dof_map(self):
-        """VIC: Build CCF group->DOF mapping for SMPL humanoid (8 groups).
+        """VIC: Build CCF group->DOF mapping for SMPL humanoid.
         SMPL DOF order (smpl_humanoid.xml):
           0-2:  L_Hip, 3-5:  L_Knee, 6-11:  L_Ankle+L_Toe
           12-14: R_Hip, 15-17: R_Knee, 18-23: R_Ankle+R_Toe
           24-53: Upper-Left  (Torso,Spine,Chest,Neck,Head,L_Thorax,L_Shoulder,L_Elbow,L_Wrist,L_Hand)
           54-68: Upper-Right (R_Thorax,R_Shoulder,R_Elbow,R_Wrist,R_Hand)
+
+        Supports 4-group (lower-body only, upper fixed at 1.0x) or 8-group (all body).
+        4 groups: L_Hip+Knee, L_Ankle+Toe, R_Hip+Knee, R_Ankle+Toe
+        8 groups: L_Hip, L_Knee, L_Ankle+Toe, R_Hip, R_Knee, R_Ankle+Toe, Upper-L, Upper-R
         """
-        groups = [
-            list(range(0,  3)),   # G0: L_Hip
-            list(range(3,  6)),   # G1: L_Knee
-            list(range(6,  12)),  # G2: L_Ankle + L_Toe
-            list(range(12, 15)),  # G3: R_Hip
-            list(range(15, 18)),  # G4: R_Knee
-            list(range(18, 24)),  # G5: R_Ankle + R_Toe
-            list(range(24, 54)),  # G6: Upper-Left  (spine + left arm)
-            list(range(54, 69)),  # G7: Upper-Right (right arm)
-        ]
+        if self._vic_ccf_num_groups == 4:
+            groups = [
+                list(range(0,  6)),   # G0: L_Hip + L_Knee
+                list(range(6,  12)),  # G1: L_Ankle + L_Toe
+                list(range(12, 18)),  # G2: R_Hip + R_Knee
+                list(range(18, 24)),  # G3: R_Ankle + R_Toe
+            ]
+        elif self._vic_ccf_num_groups == 8:
+            groups = [
+                list(range(0,  3)),   # G0: L_Hip
+                list(range(3,  6)),   # G1: L_Knee
+                list(range(6,  12)),  # G2: L_Ankle + L_Toe
+                list(range(12, 15)),  # G3: R_Hip
+                list(range(15, 18)),  # G4: R_Knee
+                list(range(18, 24)),  # G5: R_Ankle + R_Toe
+                list(range(24, 54)),  # G6: Upper-Left  (spine + left arm)
+                list(range(54, 69)),  # G7: Upper-Right (right arm)
+            ]
+        else:
+            raise ValueError(f"vic_ccf_num_groups={self._vic_ccf_num_groups} not supported (use 4 or 8)")
         assert len(groups) == self._vic_ccf_num_groups, \
             f"vic_ccf_num_groups={self._vic_ccf_num_groups} but defined {len(groups)} groups"
         return groups
@@ -390,13 +417,13 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
             motion_lib_cfg = EasyDict({
                 "motion_file": motion_train_file,
                 "device": torch.device("cpu"),
-                "fix_height": FixHeightMode.full_fix,
+                "fix_height": FixHeightMode[self.cfg["env"].get("fix_height_mode", "full_fix")],
                 "min_length": self._min_motion_len,
                 "max_length": -1,
-                "im_eval": flags.im_eval,
+                "im_eval": self.cfg["env"].get("im_eval_override", False) or flags.im_eval,
                 "multi_thread": not self.cfg.disable_multiprocessing ,
                 "smpl_type": self.humanoid_type,
-                "randomrize_heading": True,
+                "randomrize_heading": self.cfg["env"].get("randomrize_heading", True),
                 "device": self.device,
                 "step_dt": self.dt,
             })
@@ -416,10 +443,10 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
                 "fix_height": FixHeightMode.full_fix,
                 "min_length": self._min_motion_len,
                 "max_length": self.max_len,
-                "im_eval": flags.im_eval,
+                "im_eval": self.cfg["env"].get("im_eval_override", False) or flags.im_eval,
                 "multi_thread": not self.cfg.disable_multiprocessing ,
                 "smpl_type": self.humanoid_type,
-                "randomrize_heading": True,
+                "randomrize_heading": self.cfg["env"].get("randomrize_heading", True),
                 "device": self.device,
                 "robot": self.cfg.robot,
                 "step_dt": self.dt,
@@ -1127,6 +1154,17 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
             self.rew_buf[:] += bio_ccf_reward
             self.reward_raw = torch.cat([self.reward_raw, bio_ccf_reward[:, None]], dim=-1)
 
+        # Foot position imitation reward — dedicated tracking for foot bodies
+        if self._foot_pos_reward_w > 0:
+            sim_foot_pos = body_pos[:, self._foot_body_ids, :]   # [N, 4, 3]
+            ref_foot_pos = ref_rb_pos[:, self._foot_body_ids, :]  # [N, 4, 3]
+            foot_pos_diff = sim_foot_pos - ref_foot_pos
+            foot_pos_err = (foot_pos_diff ** 2).mean(dim=-1).mean(dim=-1)  # [N]
+            foot_pos_reward = torch.exp(-self._foot_pos_reward_k * foot_pos_err) * self._foot_pos_reward_w
+            foot_pos_reward[self.progress_buf <= 3] = 0
+            self.rew_buf[:] += foot_pos_reward
+            self.reward_raw = torch.cat([self.reward_raw, foot_pos_reward[:, None]], dim=-1)
+
         return
 
     def _compute_bio_ccf_reward(self):
@@ -1153,11 +1191,19 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
         if not hasattr(self, '_last_ccf_raw'):
             return torch.zeros(self.num_envs, device=self.device)
 
-        # CCF groups: G1=L_Knee, G2=L_Ankle+Toe, G4=R_Knee, G5=R_Ankle+Toe
-        l_ankle_ccf = self._last_ccf_raw[:, 2]  # G2: L_Ankle+Toe, [N]
-        r_ankle_ccf = self._last_ccf_raw[:, 5]  # G5: R_Ankle+Toe, [N]
-        l_knee_ccf = self._last_ccf_raw[:, 1]   # G1: L_Knee, [N]
-        r_knee_ccf = self._last_ccf_raw[:, 4]   # G4: R_Knee, [N]
+        # CCF group indices depend on grouping mode (4 or 8 groups)
+        if self._vic_ccf_num_groups == 4:
+            # 4 groups: G0=L_Hip+Knee, G1=L_Ankle+Toe, G2=R_Hip+Knee, G3=R_Ankle+Toe
+            l_ankle_ccf = self._last_ccf_raw[:, 1]  # G1: L_Ankle+Toe
+            r_ankle_ccf = self._last_ccf_raw[:, 3]  # G3: R_Ankle+Toe
+            l_knee_ccf = self._last_ccf_raw[:, 0]   # G0: L_Hip+Knee
+            r_knee_ccf = self._last_ccf_raw[:, 2]   # G2: R_Hip+Knee
+        else:
+            # 8 groups: G1=L_Knee, G2=L_Ankle+Toe, G4=R_Knee, G5=R_Ankle+Toe
+            l_ankle_ccf = self._last_ccf_raw[:, 2]  # G2: L_Ankle+Toe
+            r_ankle_ccf = self._last_ccf_raw[:, 5]  # G5: R_Ankle+Toe
+            l_knee_ccf = self._last_ccf_raw[:, 1]   # G1: L_Knee
+            r_knee_ccf = self._last_ccf_raw[:, 4]   # G4: R_Knee
 
         # Reward: stance → CCF positive (stiff), swing → CCF negative (compliant)
         # Ankle reward

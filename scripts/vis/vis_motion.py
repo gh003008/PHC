@@ -25,6 +25,8 @@ from phc.utils.motion_lib_smpl import MotionLibSMPL as MotionLibSMPL
 from smpl_sim.smpllib.smpl_local_robot import SMPL_Robot
 from poselib.poselib.skeleton.skeleton3d import SkeletonTree
 from phc.utils.flags import flags
+from phc.utils.motion_lib_base import FixHeightMode
+from easydict import EasyDict
 
 flags.test = True
 flags.im_eval = True
@@ -64,7 +66,8 @@ smpl_robot = SMPL_Robot(
     data_dir="data/smpl",
 )
 
-gender_beta = np.array([1.0000, -0.2141, -0.1140, 0.3848, 0.9583, 1.7619, 1.5040, 0.5765, 0.9636, 0.2636, -0.4202, 0.5075, -0.7371, -2.6490, 0.0867, 1.4699, -1.1865])
+# gender_beta = np.array([1.0000, -0.2141, -0.1140, 0.3848, 0.9583, 1.7619, 1.5040, 0.5765, 0.9636, 0.2636, -0.4202, 0.5075, -0.7371, -2.6490, 0.0867, 1.4699, -1.1865])
+gender_beta = np.zeros(17)  # neutral gender, zero betas (H5 motion library)
 smpl_robot.load_from_skeleton(betas=torch.from_numpy(gender_beta[None, 1:]), gender=gender_beta[0:1], objs_info=None)
 test_good = f"/tmp/smpl/test_good.xml"
 smpl_robot.write_xml(test_good)
@@ -193,7 +196,8 @@ for body_name in key_body_names:
 gym.prepare_sim(sim)
 body_ids = np.array(body_ids)
 
-motion_file = "data/amass/pkls/amass_isaac_im_patch_upright_slim.pkl"
+motion_file = "sample_data/h5_motion_library.pkl"
+# motion_file = "data/amass/pkls/amass_isaac_im_patch_upright_slim.pkl"
 # motion_file = "data/amass/pkls/amass_isaac_im_train_upright_slim.pkl"
 # motion_file = "data/amass/pkls/amass_isaac_locomotion_upright.pkl"
 # motion_file = "data/amass/pkls/amass_isaac_slowalk_upright.pkl"
@@ -233,7 +237,19 @@ else:
 
 device = (torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu"))
 
-motion_lib = MotionLibSMPL(motion_file=motion_file, key_body_ids=body_ids, device=device, masterfoot_conifg=_masterfoot_config, fix_height=False, multi_thread=False)
+motion_lib_cfg = EasyDict({
+    "motion_file": motion_file,
+    "device": device,
+    "fix_height": FixHeightMode.full_fix,
+    "min_length": -1,
+    "max_length": -1,
+    "im_eval": True,
+    "multi_thread": False,
+    "smpl_type": "smpl",
+    "randomrize_heading": False,
+    "step_dt": 1/30,
+})
+motion_lib = MotionLibSMPL(motion_lib_cfg)
 num_motions = 30
 curr_start = 0
 motion_lib.load_motions(skeleton_trees=[sk_tree] * num_motions, gender_betas=[torch.zeros(17)] * num_motions, limb_weights=[np.zeros(10)] * num_motions, random_sample=False)
@@ -261,7 +277,7 @@ if masterfoot:
     left_to_right_index = [7, 8, 9, 10, 11, 12, 13, 0, 1, 2, 3, 4, 5, 6, 14, 15, 16, 17, 18, 24, 25, 26, 27, 28, 19, 20, 21, 22, 23]
 else:
     left_to_right_index = [4, 5, 6, 7, 0, 1, 2, 3, 8, 9, 10, 11, 12, 18, 19, 20, 21, 22, 13, 14, 15, 16, 17]
-env_ids = torch.arange(num_envs).int().to(args.sim_device)
+env_ids = torch.arange(num_envs).int().to(device)
 while not gym.query_viewer_has_closed(viewer):
     # step the physics
 
@@ -269,7 +285,7 @@ while not gym.query_viewer_has_closed(viewer):
     motion_time = time_step % motion_len
     # motion_time = 0
 
-    motion_res = motion_lib.get_motion_state(torch.tensor([motion_id]).to(args.compute_device_id), torch.tensor([motion_time]).to(args.compute_device_id))
+    motion_res = motion_lib.get_motion_state(torch.tensor([motion_id]).to(device), torch.tensor([motion_time]).to(device))
 
     root_pos, root_rot, dof_pos, root_vel, root_ang_vel, dof_vel, smpl_params, limb_weights, pose_aa, rb_pos, rb_rot, body_vel, body_ang_vel = \
                 motion_res["root_pos"], motion_res["root_rot"], motion_res["dof_pos"], motion_res["root_vel"], motion_res["root_ang_vel"], motion_res["dof_vel"], \
