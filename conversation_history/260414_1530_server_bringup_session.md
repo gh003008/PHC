@@ -117,11 +117,104 @@ python phc/run_hydra.py \
 - OOM 시 32 까지 낮추거나 `+env.episode_length=150` 도 override
 - 서버에서 학습한 체크포인트는 `output/HumanoidIm/humanoid_smpl/PHC_Server_Baseline_v1_*/` 에 저장됨 (서버 local, git 에 없음). 평가하려면 rsync 로 로컬 가져오기.
 
-## 1000 epoch 결과 (2026-04-14 16:43 기록)
+## Run 1 최종 결과 (2026-04-14, Job 3598, Ep 3500 에서 수동 종료)
 
-| 지표 | Ep 1000 | 로컬 V4 (20k 최종) | 로컬 VIC_CCF_ON2 (20k 최종) |
+### 학습 추이
+| Epoch | rwd | eps_len | 비고 |
 |---|---|---|---|
-| reward | **128.7** | 461 (av) | 940 (av) |
-| eps_len | **42.2** | 143 (av) | 297 (av) |
+| 1 | 6.7 | 2.1 | 초기 |
+| 1000 | 128.7 | 42.2 | 빠른 상승 구간 종료 |
+| 1582 | 145.1 | 49.6 | 1차 피크 |
+| 2000 | 135.4 | 44.0 | plateau 진입 |
+| 3499 | **158.8** | **53.2** | **학습 중 최고치** |
+| 3533 (마지막) | 138.4 | 46.0 | scancel 시점 |
 
-로컬 shrunk plateau (eps_len ≈12) 를 **3.5× 돌파**. "config 축소가 학습 실패의 원인" 가설 **강하게 확증**.
+비교 (로컬 20k 최종, rolling av):
+- V4: av_reward 461 / av_steps 143
+- VIC_CCF_ON2: av_reward 940 / av_steps 297
+
+해석: 로컬 shrunk plateau(eps_len ≈12) 를 **4× 이상 돌파**, "config 축소가 실패 원인" 가설 확증. 다만 Ep 1500 이후 개선폭 둔화 — 학습 자체의 자연스러운 slow phase 인지, 구조적 한계인지는 이어 학습으로 판정 필요.
+
+### 저장된 체크포인트 (server only, git 제외)
+위치: `~/PHC/output/HumanoidIm/PHC_Server_Baseline_v1/`
+- `Humanoid_V4_Fresh_Start_01_00003500.pth` — Ep 3500 (피크 근접)
+- `Humanoid_V4_Fresh_Start_01_00003400.pth` — Ep 3400
+- `Humanoid_V4_Fresh_Start_01_00003300.pth` — Ep 3300
+- `Humanoid_V4_Fresh_Start_01.pth` — latest (=Ep 3500)
+- (100 epoch 간격으로 Ep 100 부터 전부 있음, 총 약 35개 × 86MB)
+
+---
+
+## 로컬 시각화 재현 가이드
+
+**전제**: 로컬에 `phc` conda env + IsaacGym 이미 설치돼 있음 (과거 세션에서).
+
+### 1. 최신 코드 pull
+```bash
+cd ~/PHC
+git checkout Jimin
+git pull origin Jimin
+```
+→ flatten 된 `phc/data/cfg/env/env_im_walk.yaml`, `train_phc.sh`, `monitor_progress.sh`, 이 세션 파일이 반영됨.
+
+### 2. 체크포인트 rsync (서버 → 로컬)
+용량 최소화: peak 하나만 + latest 만.
+```bash
+mkdir -p ~/PHC/output/HumanoidIm/PHC_Server_Baseline_v1
+rsync -avz --progress \
+    jiminyoun@server1:~/PHC/output/HumanoidIm/PHC_Server_Baseline_v1/Humanoid_V4_Fresh_Start_01_00003500.pth \
+    jiminyoun@server1:~/PHC/output/HumanoidIm/PHC_Server_Baseline_v1/Humanoid_V4_Fresh_Start_01.pth \
+    ~/PHC/output/HumanoidIm/PHC_Server_Baseline_v1/
+```
+(약 172MB, 네트워크 속도에 따라 수초~수십초)
+
+전부 받으려면 파일명 두 개 빼고 디렉토리 전체:
+```bash
+rsync -avz --progress \
+    jiminyoun@server1:~/PHC/output/HumanoidIm/PHC_Server_Baseline_v1/ \
+    ~/PHC/output/HumanoidIm/PHC_Server_Baseline_v1/
+```
+(약 3GB)
+
+### 3. 로컬에서 IsaacGym viewer 실행
+```bash
+conda activate phc
+cd ~/PHC
+
+# Ep 3500 체크포인트 로드 + viewer 띄우기
+python phc/run_hydra.py \
+    learning=im_walk \
+    env=env_im_walk \
+    exp_name=PHC_Server_Baseline_v1 \
+    env.num_envs=1 \
+    env.numEnvs=1 \
+    test=True \
+    epoch=3500 \
+    headless=False \
+    no_log=True
+```
+`headless=False` 가 viewer 창 띄우고, `env.num_envs=1` 이 로컬 7.6GB GPU OOM 방지.
+
+### 4. 다른 epoch 을 보고싶다면
+- `epoch=3500` → 해당 번호의 `_00003500.pth` 로드
+- `epoch=-1` → `Humanoid_V4_Fresh_Start_01.pth` (latest) 로드
+- `epoch=1000`, `epoch=2000` 등 원하는 체크포인트 번호 지정 가능 (단, 해당 .pth 가 rsync 되어있어야 함)
+
+### 5. 학습 이어가기 (서버에서)
+체크포인트 기반으로 Ep 3500 → 그 이상 학습 계속 하려면, 서버에서:
+```bash
+# train_phc.sh 의 python 명령에 epoch=3500 (or -1) 추가
+cd ~/PHC
+# train_phc.sh 수정 후
+sbatch train_phc.sh
+```
+
+### 설정 스냅샷 (이 결과를 만든 정확한 config)
+- `phc/data/cfg/env/env_im_walk.yaml` (commit `1f2f1f8` 기준) — flatten 된 것
+- `phc/data/cfg/learning/im_walk.yaml` — MLP [1024, 1024, 512, 512], AMP buffer 200k, max_epochs 20000
+- `phc/data/cfg/config.yaml` — root, Hydra defaults 로 robot=smpl_humanoid, learning=im, sim=default_sim 등 자동 로드
+- 실행 명령: `python phc/run_hydra.py learning=im_walk env=env_im_walk exp_name=PHC_Server_Baseline_v1 headless=True no_log=True`
+- Motion 데이터: `sample_data/amass_isaac_walking_primitive.pkl` (AMASS KIT walking subset, 약 50 motions)
+- GPU: NVIDIA RTX A5000 24GB, 서버 partition `idx2` (`--gres=gpu:idx2:1`, `--mem=15G`)
+
+---
