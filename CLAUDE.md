@@ -40,6 +40,38 @@ This file provides guidance to Claude Code when working with this repository.
 
 ---
 
+## CALM 통합 트랙 (브랜치: `human_model_v1`, 2026-04-15)
+
+**별도 트랙**: VIC와 병행하여 CALM 근골격 모델을 PHC에 통합하는 작업이 진행 중. 현재 브랜치에서만 활성.
+
+- **Task**: `HumanoidImCALM` (`phc/env/tasks/humanoid_im_calm.py`)
+- **Config**: `phc/data/cfg/env/env_im_walk_calm.yaml`, `phc/data/cfg/learning/im_walk_calm.yaml` (`im_walk_calm_diag.yaml` 진단용)
+- **Baseline 결과 (CALM Walk v1)**: 10k epoch, rwd 58.9 → ~90, eps_len 18.7 → 28~30. 체크포인트 `output/CALM_Walk_v1.pth`
+- **WandB**: `gh003008-korea-advanced-institute-of-science-and-technology/CALM_Walk/runs/1jalybo1`
+- **임시 fix (안정화용)**: ligament disabled, torque_limit=200, terminationDistance=0.5 (ligament는 SMPL axis-angle vs Euler mismatch로 exponential torque blowup 발생 — `01_research_docs/260413_CALM_RL_integration_issue01_ligament.md` 참조)
+- **현재 한계**: 발을 못 뗌, 앞으로 고꾸라짐 — 파라미터 튜닝 + contact-aware reward 필요
+- **상세 문서**: `/home/gunhee/workspace/Human_Model_ver1.0/docs/RL/260414_calm_walk_v1_baseline.md`
+- **스냅샷**: `exp_config/calm_walking/260414_v1_baseline/` (Human_Model 레포로의 심볼릭 링크)
+- **CALM 상위 맥락 + Parameter ID PPT handoff**: `Human_Model_ver1.0/docs/ppt_drafts/260415_session_handoff_ppt_01.md`
+
+### CALM 통합 명령어
+
+```bash
+# 학습
+python phc/run.py --task HumanoidImCALM \
+  --cfg_env phc/data/cfg/env/env_im_walk_calm.yaml \
+  --cfg_train phc/data/cfg/learning/im_walk_calm.yaml \
+  --headless --num_envs 512
+
+# 평가 (시각화)
+python phc/run.py --task HumanoidImCALM \
+  --cfg_env phc/data/cfg/env/env_im_walk_calm.yaml \
+  --cfg_train phc/data/cfg/learning/im_walk_calm.yaml \
+  --num_envs 1 --test --epoch -1
+```
+
+---
+
 ## Current Research Status (2026-03-11)
 
 ### 최신 실험: VIC_CCF_ON2
