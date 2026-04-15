@@ -4,7 +4,7 @@ notes: "Pure PHC Single Primitive Walking Task - Focused on subset"
 disable_multiprocessing: False
 
 env:
-  motion_file: "sample_data/h5_motion_library.pkl"
+  motion_file: "sample_data/amass_isaac_walking_primitive.pkl"
   num_envs: 512
   numEnvs: 512
   env_spacing: 5
