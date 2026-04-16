@@ -56,6 +56,8 @@ env:
   vic_ccf_num_groups: 4
   # VIC: CCF sigma override (log-std, -1.0 => std=0.37 vs PD default -2.9 => std=0.055)
   vic_ccf_sigma_init: -1.0
+  # VIC: Phase observation (sin/cos encoding of gait cycle phase, +2 obs dims) — matches gunhee VIC_PHASE
+  vic_phase_obs: True
   # VIC: Reward Weight Curriculum (epoch < switch_epoch: task-heavy, epoch >= switch_epoch: disc-heavy)
   reward_curriculum_switch_epoch: 10000
   reward_w_stage1_task: 0.7

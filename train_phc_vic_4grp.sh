@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J phc_vic_4grp
+#SBATCH -J phc_vic_phase_4grp
 #SBATCH -p idx0
 #SBATCH -N 1
 #SBATCH -n 1
