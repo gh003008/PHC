@@ -1,7 +1,7 @@
 # Phase 0 VIC Feasibility: Findings and Path Forward
 
-**Version**: 1.0 — 2026-04-16
-**Scope**: Interim analysis after running 4 configurations on S001 treadmill walking data
+**Version**: 1.1 — 2026-04-17 (updated with VIC_PHASE_H5_4grp final results)
+**Scope**: Full analysis after running 5 configurations on S001 treadmill walking data
 **Related**: [260413_MPL_methodology_refined.md](./260413_MPL_methodology_refined.md)
 
 ---
@@ -34,7 +34,8 @@ Final (or latest) results:
 | B | AMASS primitive | ON | 8 | 20,001 | 223 | 80 | 2.67 s |
 | C | H5 S001 | ON | 8 | 20,001 | **392** | 130 | 4.33 s |
 | D | H5 S001 | **OFF** | — | running (Ep ~18,593) | **605** | **192** | **6.40 s** |
-| E | H5 S001 | ON | 4 (lower body only, upper fixed) | running (Ep ~12,674) | 330 | 115 | 3.83 s |
+| E | H5 S001 | ON | 4 (lower body only, upper fixed) | 19,800 (manual stop) | 301 | 100 | 3.33 s |
+| F | H5 S001 | ON | 4 (lower body only, upper fixed) + **phase_obs** | 20,001 | **397** | **131** | 4.38 s |
 
 **Ep 10,000 snapshot** (most directly comparable since curriculum switch just occurred):
 
@@ -42,9 +43,14 @@ Final (or latest) results:
 |---|---|---|
 | C (H5 + VIC 8grp) | 262.8 | 93.2 |
 | D (H5 + no VIC) | **740.9** | **235.1** |
-| E (H5 + VIC 4grp) | ~300 | ~100 |
+| E (H5 + VIC 4grp, no phase_obs) | ~300 | ~100 |
+| F (H5 + VIC 4grp + phase_obs) | 315.3 | 104.5 |
 
-**Key ordering (H5 motion)**: `no VIC ≫ VIC 4grp > VIC 8grp`. VIC costs 25–50% of reward relative to PD baseline on this task.
+**Key ordering (H5 motion)**: `no VIC (562/178) ≫ VIC 4grp+phase_obs (397/131) ≈ VIC 8grp (392/130) > VIC 4grp no phase_obs (301/100)`.
+
+**Cell F finding**: Adding `vic_phase_obs: True` to 4-group VIC improved rwd +32% and eps_len +31% over Cell E (no phase_obs), reaching parity with 8-group VIC (Cell C). This confirms that **gait phase observation is critical for VIC learning** — without it, the policy cannot time CCF modulation to the gait cycle.
+
+However, **no VIC still dominates** in Phase 0 (nominal walking). VIC costs ~30% of reward relative to PD baseline on this task.
 
 ---
 
