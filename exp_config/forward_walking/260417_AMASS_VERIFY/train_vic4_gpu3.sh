@@ -1,10 +1,11 @@
 #!/bin/bash
 #SBATCH -J amass_verify_vic4
+#SBATCH -p idx3
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:idx3:1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --mem=15G
 #SBATCH -t 16:00:00
 #SBATCH -o logs/%x_%j.out
 #SBATCH -e logs/%x_%j.err
@@ -19,6 +20,7 @@
 
 source /opt/miniconda3/etc/profile.d/conda.sh
 conda activate phc
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 
 echo "=== Job started: $(date) on $(hostname) ==="
 echo "=== GPU allocated: ==="
@@ -33,6 +35,7 @@ python phc/run.py \
   --cfg_env exp_config/forward_walking/260417_AMASS_VERIFY/env_im_walk_vic_4grp.yaml \
   --cfg_train exp_config/forward_walking/260417_AMASS_VERIFY/im_walk_vic_4grp.yaml \
   --headless \
-  --num_envs 512
+  --num_envs 512 \
+  --no_log
 
 echo "=== Job finished: $(date) ==="
