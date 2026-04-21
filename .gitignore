@@ -133,6 +133,7 @@ data/*
 output/
 log/
 sample_data/
+*.zip
 
 *.png
 *.jpg
