@@ -22,7 +22,10 @@ Output:
         ordered by v_x_mean_mid ascending.
 
 Filter criteria (forward_straight):
-    v_x_mean_mid        >  +V_FWD_MIN       (pelvis moves forward on average)
+    v_x_mean_mid        <  -V_FWD_MIN       (pelvis moves in -x direction, which is
+                                             "forward" in the PHC world-frame
+                                             convention — confirmed via
+                                             walking_forward_single.pkl, v_x ≈ -0.44 m/s)
     |v_y_mean_mid|      <   V_LATERAL_MAX   (no strong sideways drift)
     |yaw_rate_mean_mid| <   YAW_RATE_MAX    (not turning)
 
@@ -81,9 +84,11 @@ def classify_direction(v_x, v_y, yaw_rate):
     v_lat = abs(v_y)
     if abs(yaw_rate) >= YAW_RATE_MAX:
         return "turning"
-    if v_x > V_FWD_MIN and v_lat < V_LATERAL_MAX:
-        return "forward_straight"
+    # PHC world-frame convention: forward walking has v_x < 0 (verified via
+    # walking_forward_single.pkl: v_x_mean ≈ -0.44 m/s over its peak phase).
     if v_x < -V_FWD_MIN and v_lat < V_LATERAL_MAX:
+        return "forward_straight"
+    if v_x > +V_FWD_MIN and v_lat < V_LATERAL_MAX:
         return "backward_straight"
     return "other"
 
@@ -164,9 +169,10 @@ def main():
         json.dump(full_meta, f, indent=2)
     print(f"Wrote {OUT_FULL}")
 
-    # Forward-only subset, ordered by ascending v_x
+    # Forward-only subset, ordered by ascending forward-speed magnitude |v_x|
+    # (forward v_x is negative, so smallest |v_x| = slowest forward walk).
     fwd = {k: v for k, v in full_meta.items() if v["is_forward_straight"]}
-    fwd_sorted = dict(sorted(fwd.items(), key=lambda kv: kv[1]["v_x_mean_mid"]))
+    fwd_sorted = dict(sorted(fwd.items(), key=lambda kv: abs(kv[1]["v_x_mean_mid"])))
     with open(OUT_FWD, "w") as f:
         json.dump(fwd_sorted, f, indent=2)
     print(f"Wrote {OUT_FWD}  ({len(fwd_sorted)} forward-straight clips)")
