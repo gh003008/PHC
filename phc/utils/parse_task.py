@@ -40,6 +40,7 @@ from phc.env.tasks.humanoid_im_mcp_vic import HumanoidImMCPVIC
 from phc.env.tasks.humanoid_im_vic import HumanoidImVIC
 from phc.env.tasks.humanoid_im_vic_cmd import HumanoidImVICCmd
 from phc.env.tasks.humanoid_im_vic_cmd_retime import HumanoidImVICCmdRetime
+from phc.env.tasks.humanoid_im_vic_cmd_multiclip import HumanoidImVICCmdMultiClip
 from phc.env.tasks.humanoid_im_mpl import HumanoidImMPL
 
 
