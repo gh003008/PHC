@@ -132,6 +132,7 @@ checkpoints/
 data/*
 output/
 log/
+sample_data/
 
 *.png
 *.jpg
