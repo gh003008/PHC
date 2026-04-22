@@ -133,6 +133,7 @@ python phc/run_hydra.py \
   epoch=-1 \
   test=True \
   env=env_im_pnn \
+  env.num_prim=4 \
   robot=smpl_humanoid_shape \
   robot.freeze_hand=True \
   robot.box_body=False \
@@ -141,9 +142,18 @@ python phc/run_hydra.py \
   headless=False
 ```
 
-Same as upstream guide §5.2 and README lines 250–251. Single-primitive
-checkpoint (`phc_shape_pnn_iccv`), not MCP/composer. env `env_im_pnn`, not
-`env_im_getup_mcp`.
+Same as upstream guide §5.2 and README lines 250–251, **plus `env.num_prim=4`
+added after execution discovered the shape mismatch** — see Task 11 note in
+`docs/superpowers/specs/phc_v0_setup_log.md`. The downloaded
+`phc_shape_pnn_iccv/Humanoid.pth` checkpoint has 4 PNN primitives
+(`pnn.actors.0..3`) but `env_im_pnn.yaml` defaults to `num_prim: 3`; without
+the override, `load_state_dict` throws `Unexpected key(s): ...actors.3...`.
+Both upstream guide §5.2 and README line 250 omit this override — treat as
+upstream documentation oversight.
+
+Single-primitive-mode checkpoint (`phc_shape_pnn_iccv`), not MCP/composer.
+env `env_im_pnn`, not `env_im_getup_mcp`. ("Single primitive" here means
+"without MCP composer", not "1 PNN primitive" — PNN count is 4.)
 
 ---
 
