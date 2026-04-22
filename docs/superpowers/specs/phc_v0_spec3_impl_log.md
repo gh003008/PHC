@@ -293,7 +293,7 @@ Original exit gate items (from plan) — status under Option B descope:
 - [ ] ~~V7 `steps ≥ 500` AND `reward ≥ 470`.~~ *(DESCOPED.)*
 - [x] `git diff phc/` since Spec #2's last impl commit touches only 1 new
       yaml + ≤30 lines edit to `humanoid_im_pain.py`. *(Verified below.)*
-- [ ] User has reviewed this log and approved v0 as shipped under Option B.
+- [x] User has reviewed this log and approved v0 as shipped under Option B. *(Approved 2026-04-22.)*
 
 ---
 
