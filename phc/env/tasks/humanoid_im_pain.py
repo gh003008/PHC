@@ -76,6 +76,38 @@ class HumanoidImPain(HumanoidIm):
         self.pain_external = z()
         self.pain_contact_body = zb()
         self.pain_scalar = torch.zeros((self.num_envs,), device=self.device)
+        self._group_dof_idx = self._build_body_group_idx()
+
+    def _build_body_group_idx(self):
+        """SMPL body-name groups -> DOF index tensors. Called once in __init__.
+
+        Groups aggregate DOF-level pain_state into 5 interpretable buckets.
+        Root body (`Pelvis`) is excluded — it has no DOFs under SMPL.
+        """
+        groups = {
+            "legs":  ["L_Hip", "R_Hip", "L_Knee", "R_Knee",
+                      "L_Ankle", "R_Ankle", "L_Toe", "R_Toe"],
+            "arms":  ["L_Thorax", "R_Thorax", "L_Shoulder", "R_Shoulder",
+                      "L_Elbow", "R_Elbow", "L_Wrist", "R_Wrist"],
+            "torso": ["Torso", "Spine", "Chest"],
+            "head":  ["Neck", "Head"],
+            "hands": ["L_Hand", "R_Hand"],
+        }
+
+        # SMPL DOF layout: non-root body at index i -> DOFs [3*(i-1) : 3*i].
+        name_to_body_idx = {n: i for i, n in enumerate(self._body_names)}
+        out = {}
+        for group_name, body_names in groups.items():
+            dof_idx = []
+            for bn in body_names:
+                bi = name_to_body_idx.get(bn)
+                if bi is None or bi == 0:
+                    continue
+                dof_idx.extend([3 * (bi - 1), 3 * (bi - 1) + 1, 3 * (bi - 1) + 2])
+            out[group_name] = torch.tensor(
+                dof_idx, device=self.device, dtype=torch.long
+            )
+        return out
 
     def _update_pain_buffers(self):
         if not self.pain_enabled or self.pain_mode == "off":
@@ -129,6 +161,13 @@ class HumanoidImPain(HumanoidIm):
         self.extras["pain_max"] = float(self.pain_scalar.max().item())
         self.extras["pain_internal_mean"] = float(self.pain_internal.mean().item())
         self.extras["pain_external_mean"] = float(self.pain_external.mean().item())
+
+        for name, idx in self._group_dof_idx.items():
+            self.extras[f"pain_{name}"] = float(self.pain_state[:, idx].mean().item())
+
+        self.extras["pain_p90"] = float(torch.quantile(self.pain_scalar, 0.90).item())
+        self.extras["pain_p99"] = float(torch.quantile(self.pain_scalar, 0.99).item())
+        self.extras["pain_saturated_frac"] = float((self.pain_state >= 2.5).float().mean().item())
 
         if flags.im_eval:
             if self._p_log_joint:
