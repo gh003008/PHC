@@ -236,7 +236,7 @@ def compute_root_translation(f, trial_path, fps_in, fps_out):
     return trans
 
 
-def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0):
+def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3axis=False):
     """Convert a single H5 trial to PHC motion library format.
 
     Returns:
@@ -375,7 +375,30 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0):
             vals = 0.5 * (vL + vR)
         else:
             vals = _read_side(f"{trial_path}/mocap/angle/{side}/{joint}/x")
-        pose_aa_local[:, smpl_idx, 0] = sign * np.deg2rad(vals)   # Rx (Y-up sagittal)
+        if spine_3axis and smpl_idx in (3, 6):
+            # Read y, z in addition to x (already `vals`) and compose as extrinsic XYZ Euler
+            # (scipy upper-case "XYZ" = extrinsic, matching PiG Cardan convention).
+            # For midline joints (side=="any"), PiG reports left/right with opposite y,z signs
+            # (mirror convention), so averaging cancels lateral/axial motion.
+            # Use left channel directly for y,z — it gives the actual joint motion.
+            # NOTE: The left-channel sign has not been independently confirmed against
+            # anatomical convention — visually verify (Task 6 comparison mp4) before
+            # trusting y,z magnitudes for quantitative analysis.
+            vx = vals                                                 # already mean(L,R) x
+            if side == "any":
+                vy = _read_side(f"{trial_path}/mocap/angle/left/{joint}/y")
+                vz = _read_side(f"{trial_path}/mocap/angle/left/{joint}/z")
+            else:
+                # Currently unreachable: LEG_SPINE_MAP entries for smpl_idx 3,6 both use side="any".
+                # Kept as a forward-compat hook if a future 3-axis spine joint has a non-"any" side.
+                vy = _read_side(f"{trial_path}/mocap/angle/{side}/{joint}/y")
+                vz = _read_side(f"{trial_path}/mocap/angle/{side}/{joint}/z")
+            eul = np.stack([sign * np.deg2rad(vx),
+                            np.deg2rad(vy),
+                            np.deg2rad(vz)], axis=-1)
+            pose_aa_local[:, smpl_idx, :] = sRot.from_euler("XYZ", eul).as_rotvec()
+        else:
+            pose_aa_local[:, smpl_idx, 0] = sign * np.deg2rad(vals)   # existing behavior
         mapped_count += 1
 
     if mapped_count < 4:
@@ -548,8 +571,9 @@ def main():
                         help="Don't split into clips, keep full trials")
     parser.add_argument("--trim_start", type=float, default=0.0,
                         help="Trim this many seconds from the start of each trial (skip warmup)")
-    # TODO(Tasks 3-4): --spine_3axis and --upper_body are currently no-ops.
+    # TODO(Task 4): --upper_body is currently a no-op.
     # --baseline_s is wired (pelvis channels only; see convert_trial).
+    # --spine_3axis is wired (adds y,z Euler axes to SMPL Torso/Spine2 via LEG_SPINE_MAP).
     parser.add_argument("--baseline_s", type=float, default=0.0,
                         help="Subtract standing-mean baseline computed from first N seconds of each trial. 0 = off.")
     parser.add_argument("--spine_3axis", action="store_true",
@@ -598,7 +622,7 @@ def main():
                     trial_path = f"{subj}/{task}/{level}/{trial}"
                     print(f"Processing: {trial_path}")
 
-                    result = convert_trial(f, trial_path, fps_in, args.fps_out, baseline_s=args.baseline_s)
+                    result = convert_trial(f, trial_path, fps_in, args.fps_out, baseline_s=args.baseline_s, spine_3axis=args.spine_3axis)
                     if result is None:
                         skipped += 1
                         continue
