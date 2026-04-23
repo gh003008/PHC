@@ -16,4 +16,13 @@ def subtract_baseline(signal: np.ndarray, fps: int, baseline_s: float) -> np.nda
     Returns:
         New array, same shape as `signal`, with the baseline mean subtracted.
     """
-    raise NotImplementedError
+    if baseline_s <= 0:
+        return signal
+    window = int(round(baseline_s * fps))
+    window = min(window, len(signal))
+    if window <= 0:
+        return signal
+    base = np.nanmean(signal[:window])
+    if not np.isfinite(base):
+        return signal
+    return signal - base

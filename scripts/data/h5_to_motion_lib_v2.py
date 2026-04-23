@@ -236,7 +236,7 @@ def compute_root_translation(f, trial_path, fps_in, fps_out):
     return trans
 
 
-def convert_trial(f, trial_path, fps_in=100, fps_out=30):
+def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0):
     """Convert a single H5 trial to PHC motion library format.
 
     Returns:
@@ -301,6 +301,12 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30):
                 arr[nn] = np.interp(np.flatnonzero(nn), np.flatnonzero(~nn), arr[~nn])
             elif nn.all():
                 arr[:] = 0.0
+        # Baseline subtraction for pelvis standing offset
+        if baseline_s > 0:
+            from h5_conversion_helpers import subtract_baseline
+            pelvis_tilt = subtract_baseline(pelvis_tilt, fps=fps_in, baseline_s=baseline_s)
+            pelvis_obliq = subtract_baseline(pelvis_obliq, fps=fps_in, baseline_s=baseline_s)
+            pelvis_rot = subtract_baseline(pelvis_rot, fps=fps_in, baseline_s=baseline_s)
     except KeyError:
         pass  # No pelvis data available, keep zeros (pure upright)
 
@@ -329,7 +335,13 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30):
     # ------------------------------------------------------------------
 
     def _read_side(path):
-        """Read and NaN-interpolate a 1-D channel, fall back to zeros."""
+        """Read and NaN-interpolate a 1-D channel, fall back to zeros.
+
+        Note: baseline subtraction is applied to pelvis channels only (see above), NOT here.
+        Spine standing offset is actual lumbar lordosis, not a calibration artefact, so
+        subtracting it would inflate walking flexion (empirically: +14.64° trunk lean vs
+        +5.83° with pelvis-only).
+        """
         try:
             v = np.array(f[path])
         except KeyError:
@@ -536,8 +548,8 @@ def main():
                         help="Don't split into clips, keep full trials")
     parser.add_argument("--trim_start", type=float, default=0.0,
                         help="Trim this many seconds from the start of each trial (skip warmup)")
-    # TODO(Tasks 2-4): these three flags are currently no-ops. Tasks 2/3/4 will wire them
-    # into baseline subtraction, spine_3axis mapping, and upper-body (neck/head) mapping.
+    # TODO(Tasks 3-4): --spine_3axis and --upper_body are currently no-ops.
+    # --baseline_s is wired (pelvis channels only; see convert_trial).
     parser.add_argument("--baseline_s", type=float, default=0.0,
                         help="Subtract standing-mean baseline computed from first N seconds of each trial. 0 = off.")
     parser.add_argument("--spine_3axis", action="store_true",
@@ -586,7 +598,7 @@ def main():
                     trial_path = f"{subj}/{task}/{level}/{trial}"
                     print(f"Processing: {trial_path}")
 
-                    result = convert_trial(f, trial_path, fps_in, args.fps_out)
+                    result = convert_trial(f, trial_path, fps_in, args.fps_out, baseline_s=args.baseline_s)
                     if result is None:
                         skipped += 1
                         continue
