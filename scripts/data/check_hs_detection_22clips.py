@@ -134,8 +134,16 @@ def analyze_clip(entry, clip_key):
 
 
 def main():
-    pkl_path = Path("sample_data/amass_isaac_walking_primitive.pkl")
-    fwd_json = Path("sample_data/amass_isaac_walking_primitive_fwd_only.json")
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--json", default="sample_data/amass_isaac_walking_primitive_fwd_only.json",
+                   help="Forward-subset metadata JSON path")
+    p.add_argument("--pkl", default="sample_data/amass_isaac_walking_primitive.pkl",
+                   help="Source motion pkl")
+    args = p.parse_args()
+
+    pkl_path = Path(args.pkl)
+    fwd_json = Path(args.json)
 
     print(f"Loading {pkl_path} ...")
     data = joblib.load(pkl_path)
