@@ -321,3 +321,73 @@ PHC-Pain-v0 is shipped in **partial (Option B) form**:
 
 **v1 scope** (separate branch `pain_baseline_phc_v1_*`): obs-appended pain,
 MPJPE gating, multi-motion fine-tune. Out of scope for v0.
+
+---
+
+## 2026-04-23 — A5000 server re-run (handoff steps 1–3 executed)
+
+_Executed on KAIST shared Slurm cluster (`143.248.65.114`, partition `idx0` = 1×
+RTX A5000 24 GB), branch `jinsu-pain_baseline_phc_v0` replicated to `~/PHC/` on
+server. Env: python 3.8.20, torch 1.13.1+cu116, numpy 1.23.5, isaacgym preview4,
+wandb 0.13.11 (downgraded from 0.24.2 for rl_games compat)._
+
+### Server-specific patches applied (necessary, non-algorithmic)
+
+1. `phc/env/tasks/humanoid.py:747` — temp XML write path changed
+   `/tmp/smpl/` → `/tmp/smpl_jinsu/` (shared `/tmp/smpl` owned by another user,
+   no write perm). User-specific, not for upstream.
+2. `wandb==0.13.11` pinned (modern wandb 0.24.2's `save()` API requires
+   `glob_str` arg that `run_hydra.py:308` doesn't pass).
+
+### V5.3 fine-tune — partial (+1,150 epochs)
+
+Command: `learning=im_pnn_lowvram env.num_envs=512 horizon_length=32 (default)
+pain.mode=guard_and_reward max_epochs=65751`.
+
+- Pretrained checkpoint (`phc_shape_pnn_iccv`) loaded at epoch 63,750 / 860M frames.
+- Slurm budget `-t 01:00:00` hit SIGTERM at elapsed 58:40. Final epoch reached
+  64,936 (+1,186 from start). Last disk save at epoch 64,900 (rl_games saves
+  every 50 epochs). `Humanoid.pth` loads clean (`epoch=64900`).
+- Steady-state rwd ~400, eps_len ~480 — no collapse/NaN. fps_step 9,000–10,000,
+  peak VRAM well under 24 GB (no explicit measurement but no OOM through entire run).
+- User decided to stop at +1,150 epochs (Option A) rather than extend to 3h/2000
+  epoch budget, given that +1,150 already exceeded the "+1,000 is enough" heuristic.
+
+### V6 — post-training log_only probe (FAIL, as predicted by original log)
+
+Command: `pain.mode=log_only games_num=2` with fine-tuned checkpoint + retuned
+`env_im_pain_finetune.yaml`. Temp debug print added and reverted per plan Task 8.
+
+- **pain_max (steady-state): 0.522** — **identical to Spec #2 V3 baseline 0.522**,
+  1,998 consecutive timesteps showing `max=0.522 mean=0.522` with zero variance.
+- Acceptance threshold 0.35 — **FAIL** by 0.172.
+- Interpretation: standing-motion steady pose is a deterministic attractor at
+  pain=0.522; +1,150 epochs × lambda_p=0.02 was insufficient to shift the
+  attractor. Matches the original impl log's prediction ("v0 ships without
+  demonstrated 'learns to avoid pain'").
+- Reward: 977.99, steps: 999 — imitation tracking intact.
+
+### V7 — post-training guard_only probe (PASS)
+
+Command: `pain.mode=guard_only games_num=2` with fine-tuned checkpoint.
+
+- **Steps: 999/999** (both episodes full length).
+- **Reward: 975.69** average.
+- Acceptance (steps ≥ 500 AND reward ≥ 470) — **PASS** with wide margin.
+- Delta vs pretrained-only retune (V5.2-reduced 912.75): **+62.9 reward**.
+- Delta vs Spec #1 pure-imitation baseline (941.05): **+34.6** — suggests the
+  extra 1,150 epochs of fine-tuning slightly improved imitation quality even
+  though it didn't reduce pain.
+
+### v0 final disposition
+
+- ✅ "Survive the guard" — achieved (V7 PASS, non-destructive fine-tune).
+- ❌ "Learn to avoid pain" — not achieved (V6 FAIL, pain profile unchanged).
+- ✅ Non-destructive fine-tune — imitation reward rose 941 → 978.
+- Fine-tuned `Humanoid.pth` (epoch 64,900) checkpoint-copied back to local
+  `output/HumanoidIm/phc_shape_pnn_iccv_pain/` per handoff step 3.
+
+**v0 closed as partial success.** The "partial" qualifier is load-bearing: the
+survival gate closes but the internalized pain-avoidance gate does not. v1
+should attack this directly (longer fine-tune OR higher `lambda_p` OR motion
+distribution with non-attractor poses).
