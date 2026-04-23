@@ -264,6 +264,8 @@ class IMAMPPlayerContinuous(amp_players.AMPPlayerContinuous):
         sum_rewards = 0
         sum_steps = 0
         sum_game_res = 0
+        # Termination reason tallies (populated from env.task._last_reset_reason on each done event)
+        reason_counts = {'fall': 0, 'clip_end': 0, 'max_episode': 0, 'other': 0}
         n_games = n_games * n_game_life
         games_played = 0
         has_masks = False
@@ -342,6 +344,24 @@ class IMAMPPlayerContinuous(amp_players.AMPPlayerContinuous):
                         sum_rewards += cur_rewards
                         sum_steps += cur_steps
 
+                        # Termination reason tally (per-env _last_reset_reason set in humanoid_im._compute_reset)
+                        try:
+                            task = self.env.task
+                            if hasattr(task, '_last_reset_reason'):
+                                flat_done = all_done_indices.reshape(-1).tolist()
+                                for env_id in flat_done:
+                                    r_code = int(task._last_reset_reason[env_id].item())
+                                    if r_code == 1:
+                                        reason_counts['fall'] += 1
+                                    elif r_code == 2:
+                                        reason_counts['clip_end'] += 1
+                                    elif r_code == 3:
+                                        reason_counts['max_episode'] += 1
+                                    else:
+                                        reason_counts['other'] += 1
+                        except Exception:
+                            pass
+
                         game_res = 0.0
                         if isinstance(info, dict):
                             if "battle_won" in info:
@@ -380,6 +400,16 @@ class IMAMPPlayerContinuous(amp_players.AMPPlayerContinuous):
                 "av steps:",
                 sum_steps / games_played * n_game_life,
             )
+
+        # Termination reason summary
+        total_eps = sum(reason_counts.values())
+        if total_eps > 0:
+            print(f"Termination reasons over {total_eps} episodes:")
+            for reason, cnt in reason_counts.items():
+                print(f"  {reason}: {cnt} ({100*cnt/total_eps:.1f}%)")
+            print(f"Fall-free rate: {100*(1 - reason_counts['fall']/total_eps):.1f}%")
+            if reason_counts['clip_end'] > 0:
+                print(f"Clip-end rate:  {100*reason_counts['clip_end']/total_eps:.1f}%")
 
         # VIC: Save phase-CCF log and run analysis if available
         try:
