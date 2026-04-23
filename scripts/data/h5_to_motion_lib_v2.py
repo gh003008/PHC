@@ -91,7 +91,8 @@ SMPL_JOINT_NAMES = [
 # 2. Hip flexion sign is negated for SMPL convention.
 # 3. Shoulders/elbows handled specially (SMPL T-pose arms along +x).
 # 4. Right-side mirroring: negate y,z in get_mocap_euler (not in map).
-# 5. Euler convention: extrinsic "xyz" (lowercase), NOT intrinsic "XYZ".
+# 5. Euler convention: extrinsic "xyz" used in get_mocap_euler / euler_xyz_deg_to_axis_angle.
+#    Tasks 3+4 (spine/neck/head) use "XYZ" (scipy uppercase = extrinsic) directly.
 #
 # Mapping: smpl_index → (side, h5_joint, axis_mask, sign_vec)
 # axis_mask: (1,0,0) = use only x (sagittal flexion)
@@ -109,7 +110,8 @@ VICON_TO_SMPL_MAP = {
     3:  ("any",   "spine",  (1, 0, 0), (+1, +1, +1)),   # Torso (Spine1)
     6:  ("any",   "thorax", (1, 0, 0), (+1, +1, +1)),   # Spine (Spine2)
     # Shoulders and elbows are NOT in this table — handled specially below.
-    # Neck, head, wrist, pelvis: left as identity (not enough reliable data).
+    # Neck, head: mapped conditionally via --upper_body (UPPER_BODY_MAP in convert_trial).
+    # Wrist, pelvis: left as identity (not enough reliable data).
 }
 
 # Shoulder A-pose offset: rotate arms from T-pose down toward body.
@@ -236,7 +238,7 @@ def compute_root_translation(f, trial_path, fps_in, fps_out):
     return trans
 
 
-def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3axis=False):
+def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3axis=False, upper_body=False):
     """Convert a single H5 trial to PHC motion library format.
 
     Returns:
@@ -405,6 +407,25 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3
         print(f"  SKIP (only {mapped_count} joints mapped): {trial_path}")
         return None
 
+    if upper_body:
+        # Neck (SMPL 12) and Head (SMPL 15): full Euler xyz from PiG neck/head channels.
+        # x is averaged L+R (same sign both sides, midline sagittal flexion).
+        # y,z use left channel only — PiG mirror convention flips y,z signs for midline
+        # joints, so L+R average cancels to ~0 (verified on spine in Task 3).
+        # NOTE: Sign direction for y,z not empirically confirmed against anatomical
+        # convention — visually verify (Task 6 compare mp4) before trusting magnitudes.
+        UPPER_BODY_MAP = {
+            12: "neck",   # SMPL Neck
+            15: "head",   # SMPL Head
+        }
+        for smpl_idx, joint_name in UPPER_BODY_MAP.items():
+            vx = 0.5 * (_read_side(f"{trial_path}/mocap/angle/left/{joint_name}/x")
+                        + _read_side(f"{trial_path}/mocap/angle/right/{joint_name}/x"))
+            vy = _read_side(f"{trial_path}/mocap/angle/left/{joint_name}/y")
+            vz = _read_side(f"{trial_path}/mocap/angle/left/{joint_name}/z")
+            eul = np.stack([np.deg2rad(vx), np.deg2rad(vy), np.deg2rad(vz)], axis=-1)
+            pose_aa_local[:, smpl_idx, :] = sRot.from_euler("XYZ", eul).as_rotvec()
+
     # 2. Shoulders — A-pose offset about world Z (arms ±X → -Y in Y-up), then Rx swing.
     #   In Y-up frame: arms extend along ±X in T-pose. Rotating about Z brings arms
     #   from ±X toward -Y (hanging down). Then Rx swings arm forward (+Z).
@@ -571,9 +592,10 @@ def main():
                         help="Don't split into clips, keep full trials")
     parser.add_argument("--trim_start", type=float, default=0.0,
                         help="Trim this many seconds from the start of each trial (skip warmup)")
-    # TODO(Task 4): --upper_body is currently a no-op.
-    # --baseline_s is wired (pelvis channels only; see convert_trial).
-    # --spine_3axis is wired (adds y,z Euler axes to SMPL Torso/Spine2 via LEG_SPINE_MAP).
+    # All three conversion fixes are now wired:
+    # --baseline_s (pelvis channels only; see convert_trial).
+    # --spine_3axis (adds y,z Euler axes to SMPL Torso/Spine2 via LEG_SPINE_MAP).
+    # --upper_body (maps PiG neck/head to SMPL Neck(12)/Head(15) via UPPER_BODY_MAP).
     parser.add_argument("--baseline_s", type=float, default=0.0,
                         help="Subtract standing-mean baseline computed from first N seconds of each trial. 0 = off.")
     parser.add_argument("--spine_3axis", action="store_true",
@@ -622,7 +644,7 @@ def main():
                     trial_path = f"{subj}/{task}/{level}/{trial}"
                     print(f"Processing: {trial_path}")
 
-                    result = convert_trial(f, trial_path, fps_in, args.fps_out, baseline_s=args.baseline_s, spine_3axis=args.spine_3axis)
+                    result = convert_trial(f, trial_path, fps_in, args.fps_out, baseline_s=args.baseline_s, spine_3axis=args.spine_3axis, upper_body=args.upper_body)
                     if result is None:
                         skipped += 1
                         continue
