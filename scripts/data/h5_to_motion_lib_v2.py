@@ -171,15 +171,16 @@ def read_grf(f, trial_path, side):
     Returns None if the H5 lacks GRF data (legacy trials).
     side: 'left' or 'right'.
 
-    Step 3 H5 introspection (S001/level_100mps/lv0/trial_01/treadmill) showed only:
-      treadmill/left/distance_leftbelt, treadmill/left/speed_leftbelt
-      treadmill/pitch
-      treadmill/right/distance_rightbelt, treadmill/right/speed_rightbelt
-    No GRF channels exist in the current H5 — read_grf will always return None
-    for this dataset. Candidates kept for future datasets.
+    H5 forceplate structure (discovered via introspection):
+      forceplate/grf/{side}/z  — vertical GRF (Z=up in PiG lab frame convention)
+      forceplate/cop/{side}/x,y,z — Center of Pressure position
+
+    Legacy treadmill-only paths are also checked as fallback.
     """
     candidates = [
-        # Primary: vertical GRF (z-axis in this H5 convention)
+        # Primary: forceplate vertical GRF (Z = up in PiG convention)
+        f"{trial_path}/forceplate/grf/{side}/z",
+        # Legacy treadmill paths (may not exist)
         f"{trial_path}/treadmill/{side}/grf_z",
         f"{trial_path}/treadmill/{side}/grf_vertical",
         f"{trial_path}/forceplate/{side}/grf_z",
@@ -564,6 +565,129 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3
     trans = trans[:min_len]
     pose_aa_local = pose_aa_local[:min_len]
     T_out_final = min_len
+
+    if stance_anchor_ip:
+        from h5_conversion_helpers import detect_stance, compute_foot_anchor, solve_pelvis_ip
+        import torch as _torch
+        from poselib.poselib.skeleton.skeleton3d import SkeletonState as _SKS
+        # The IP solver needs FK in a gravity-aligned frame where the foot height is meaningful.
+        # trans is currently Y-up (X=right, Y=up, Z=forward). The SMPL skeleton's root rotation
+        # encodes `R_pelvis * upright`, where `upright` maps body Y → world Z (i.e., the body
+        # is oriented to lie horizontal in Y-up world). FK in Y-up therefore gives wrong foot
+        # heights for ground-contact detection.
+        #
+        # Strategy: convert to Z-up (the gravity-aligned frame) BEFORE FK:
+        #   trans_zup = upright.apply(trans)   →  [fwd, lat, up]  (indices 0,1,2)
+        #   pose_quat_global_zup = pose_quat_global_yup * upright_inv
+        #     (same transform applied in the main pipeline at lines downstream)
+        # All IP computations run in Z-up. Corrections are mapped back to Y-up:
+        #   trans_yup[0] (lateral) ← pelvis_ip_zup[1]  (Z-up Y = lateral)
+        #   trans_yup[1] (vertical) ← pelvis_ip_zup[2]  (Z-up Z = vertical/up)
+        #   trans_yup[2] (forward) unchanged
+        _T = T_out_final
+        _upright = sRot.from_quat([0.5, 0.5, 0.5, 0.5])
+        _upright_inv = _upright.inv()
+        # --- Build Z-up global rotations and translation ---
+        # 1. Local quaternions in MUJOCO order → SkeletonState → global Y-up rotations
+        pose_quat_bone_ip = sRot.from_rotvec(pose_aa_local.reshape(-1, 3)).as_quat().reshape(_T, 24, 4)
+        pose_quat_mj_ip = pose_quat_bone_ip[:, SMPL_2_MUJOCO]
+        sk_tree_ip = get_skeleton_tree()
+        r_local_t = _torch.from_numpy(pose_quat_mj_ip).float()
+        t_yup_t = _torch.from_numpy(trans).float()
+        state_loc = _SKS.from_rotation_and_root_translation(
+            sk_tree_ip, r=r_local_t, t=t_yup_t, is_local=True
+        )
+        # 2. Right-multiply by upright_inv to get Z-up global rotations
+        pqg_yup = state_loc.global_rotation.numpy()   # (T, 24, 4) xyzw
+        pqg_zup = (sRot.from_quat(pqg_yup.reshape(-1, 4)) * _upright_inv
+                   ).as_quat().reshape(_T, -1, 4)
+        # 3. Convert trans to Z-up
+        trans_zup = _upright.apply(trans)              # (T, 3): [fwd, lat, up]
+        # --- FK in Z-up frame ---
+        foot_L_w, foot_R_w, foff_L, foff_R, R_pel = fk_feet(
+            sk_tree_ip, pqg_zup, trans_zup
+        )
+        # Foot velocity: vertical (Z in Z-up, index 2) only for treadmill stance detection.
+        # In Z-up: X=forward (belt dir, ~1 m/s during stance), Y=lateral, Z=vertical.
+        # During stance, vertical foot velocity ≈ 0; during swing it peaks at ~0.5-1 m/s.
+        _grad_L = np.gradient(foot_L_w, axis=0) * fps_out
+        _grad_R = np.gradient(foot_R_w, axis=0) * fps_out
+        vel_L = np.abs(_grad_L[:, 2])   # Z = vertical only (m/s)
+        vel_R = np.abs(_grad_R[:, 2])
+        # GRF — read_grf returns data at fps_in; resample to fps_out if needed.
+        grf_L_raw = read_grf(f, trial_path, side='left')
+        grf_R_raw = read_grf(f, trial_path, side='right')
+        no_grf = (grf_L_raw is None or grf_R_raw is None)
+        if no_grf:
+            print("  [stance_anchor_ip] no GRF channels in H5 — using velocity-only stance detection")
+            # Velocity-only detection: detect_stance uses vel hysteresis alone when grf is zero
+            grf_L = np.zeros(_T)
+            grf_R = np.zeros(_T)
+        else:
+            # Resample GRF from fps_in to fps_out if lengths differ
+            def _resample_grf(arr, f_in, f_out, n_out):
+                if len(arr) == n_out:
+                    return arr
+                t_in = np.arange(len(arr)) / f_in
+                t_out = np.arange(n_out) / f_out
+                return np.interp(t_out, t_in, arr)
+            grf_L = _resample_grf(grf_L_raw, fps_in, fps_out, _T)
+            grf_R = _resample_grf(grf_R_raw, fps_in, fps_out, _T)
+        # Stance detection:
+        # - When GRF is available: GRF-only Schmitt trigger (do NOT OR with velocity, because
+        #   on a treadmill the velocity signal is noisy and would inflate stance fraction).
+        #   grf_on=50N, grf_off=20N produces ~67% stance for this dual-belt treadmill.
+        # - When no GRF: velocity-only (detect_stance fallback) using Z-up vertical velocity.
+        if not no_grf:
+            from h5_conversion_helpers import _schmitt
+            stance_L = _schmitt(grf_L, 50.0, 20.0, on_when_above=True)
+            stance_R = _schmitt(grf_R, 50.0, 20.0, on_when_above=True)
+        else:
+            stance_L, stance_R = detect_stance(grf_L, grf_R, vel_L, vel_R)
+        # Foot anchor (rolling mean per stance episode, in Z-up)
+        anchor_L = compute_foot_anchor(foot_L_w, stance_L, window=9)
+        anchor_R = compute_foot_anchor(foot_R_w, stance_R, window=9)
+        # For weighting: if no GRF, use stance bool → float (1.0 / 0.0) as pseudo-weights
+        if no_grf:
+            w_L_pseudo = stance_L.astype(np.float64)
+            w_R_pseudo = stance_R.astype(np.float64)
+        else:
+            w_L_pseudo = grf_L
+            w_R_pseudo = grf_R
+        # IP solver (Z-up frame)
+        pelvis_ip_zup = solve_pelvis_ip(
+            anchor_L, anchor_R, w_L_pseudo, w_R_pseudo,
+            R_pel, foff_L, foff_R
+        )
+        # Flight-phase fallback: NaN → previous valid position + CoM delta carry (in Z-up)
+        nan_mask = np.isnan(pelvis_ip_zup).any(axis=1)
+        if nan_mask[0]:
+            pelvis_ip_zup[0] = trans_zup[0]
+        for ti in range(1, _T):
+            if nan_mask[ti]:
+                pelvis_ip_zup[ti] = pelvis_ip_zup[ti - 1] + (trans_zup[ti] - trans_zup[ti - 1])
+        # Sanity clip: if IP differs from CoM-based trans by >30 cm, clip to 30cm (in Z-up)
+        diff_zup = pelvis_ip_zup - trans_zup
+        big = np.linalg.norm(diff_zup, axis=1) > 0.30
+        if big.any():
+            n_big = int(big.sum())
+            print(f"  [stance_anchor_ip] WARNING: {n_big}/{_T} frames IP vs CoM differ >30cm — clipping")
+            for ti in range(_T):
+                if big[ti]:
+                    d = diff_zup[ti]
+                    norm = np.linalg.norm(d) + 1e-9
+                    pelvis_ip_zup[ti] = trans_zup[ti] + d / norm * 0.30
+        # Write corrections back to Y-up trans (before upright.apply downstream).
+        # Axis mapping (upright.apply maps [x_yup,y_yup,z_yup]→[z_yup,x_yup,y_yup]=Z-up[fwd,lat,up]):
+        #   Z-up[0] = fwd = unchanged  (treadmill integration)
+        #   Z-up[1] = lat = Y-up X    → trans[:, 0]
+        #   Z-up[2] = up  = Y-up Y    → trans[:, 1]
+        trans[:, 0] = pelvis_ip_zup[:, 1]   # lateral (Z-up Y → Y-up X)
+        trans[:, 1] = pelvis_ip_zup[:, 2]   # vertical (Z-up Z → Y-up Y)
+        # trans[:, 2] (forward) unchanged — treadmill integration
+        print(f"  [stance_anchor_ip] done: "
+              f"stance_L={stance_L.mean()*100:.1f}%  stance_R={stance_R.mean()*100:.1f}%  "
+              f"flight_frames={int(nan_mask.sum())}")
 
     # ----- Build PHC-format motion using poselib (mirrors convert_amass_isaac.py) -----
     # 1. Local axis-angle (BONE order) → local quaternion xyzw (BONE order)
