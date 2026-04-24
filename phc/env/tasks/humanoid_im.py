@@ -659,7 +659,14 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
 
     def _sample_time(self, motion_ids):
         # Motion imitation, no more blending and only sample at certain locations
-        return self._motion_lib.sample_time_interval(motion_ids)
+        t = self._motion_lib.sample_time_interval(motion_ids)
+        # When cycle_motion=False the episode terminates at clip_end, so a random
+        # start anywhere in the clip causes systematically short episodes. Clamp
+        # the initial sample to the first 30% of the clip so at least ~70% of the
+        # clip plays before clip-end reset.
+        if not self.cycle_motion:
+            t = t * 0.3
+        return t
         # return self._motion_lib.sample_time(motion_ids)
 
     def _reset_task(self, env_ids):
@@ -1185,7 +1192,19 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
         is_recovery = torch.logical_and(~pass_time, self._cycle_counter > 0)  # pass time should override the cycle counter.
         self.reset_buf[is_recovery] = 0
         self._terminate_buf[is_recovery] = 0
-        
+
+        # Record reset reason (per env) for evaluation-time termination accounting.
+        #   0: no reset, 1: fall, 2: clip_end, 3: max_episode
+        # pass_time_motion_len and pass_time_max are already computed above.
+        # Anything in reset_buf that is NOT one of those is classified as a fall.
+        if not hasattr(self, '_last_reset_reason'):
+            self._last_reset_reason = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+        reset_mask = self.reset_buf.bool()
+        self._last_reset_reason[:] = 0
+        self._last_reset_reason[reset_mask & pass_time_motion_len] = 2
+        self._last_reset_reason[reset_mask & pass_time_max & ~pass_time_motion_len] = 3
+        self._last_reset_reason[reset_mask & ~pass_time_motion_len & ~pass_time_max] = 1
+
         return
 
     def _draw_task(self):

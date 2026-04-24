@@ -35,6 +35,58 @@ from tqdm import tqdm
 import copy
 
 
+def _detect_heel_strikes_static(z, sample_times, min_interval_s=0.5):
+    """Detect right heel strikes as local minima of foot-height z with min separation.
+
+    Pure function so it can be unit-tested without IsaacGym.
+    """
+    import torch
+    if z.shape[0] < 3:
+        return []
+    local_min = (z[1:-1] < z[:-2]) & (z[1:-1] <= z[2:])
+    min_indices = torch.where(local_min)[0] + 1
+    if len(min_indices) == 0:
+        return []
+    filtered = [min_indices[0].item()]
+    for i in range(1, len(min_indices)):
+        if sample_times[min_indices[i]] - sample_times[filtered[-1]] > min_interval_s:
+            filtered.append(min_indices[i].item())
+    return filtered
+
+
+def _build_phase_from_hs_static(sample_times, hs_indices, num_samples, device):
+    """Build per-sample gait phase in [0,1] given heel strike indices."""
+    import torch
+    gait_phase = torch.zeros(num_samples, device=device)
+    if len(hs_indices) < 2:
+        return sample_times / (sample_times[-1] + 1e-6)
+
+    hs_idx_tensor = torch.tensor(hs_indices, dtype=torch.long, device=device)
+    hs_times = sample_times[hs_idx_tensor]
+
+    for i in range(len(hs_times) - 1):
+        t0 = hs_times[i].item()
+        t1 = hs_times[i + 1].item()
+        mask = (sample_times >= t0) & (sample_times < t1)
+        if mask.any():
+            gait_phase[mask] = (sample_times[mask] - t0) / (t1 - t0)
+
+    stride_period = hs_times[1] - hs_times[0]
+    mask_before = sample_times < hs_times[0]
+    if mask_before.any():
+        gait_phase[mask_before] = (
+            (sample_times[mask_before] - hs_times[0] + stride_period) / stride_period
+        ) % 1.0
+
+    last_stride = hs_times[-1] - hs_times[-2]
+    mask_after = sample_times >= hs_times[-1]
+    if mask_after.any():
+        gait_phase[mask_after] = torch.clamp(
+            (sample_times[mask_after] - hs_times[-1]) / last_stride, 0.0, 1.0
+        )
+    return gait_phase
+
+
 class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
 
     def __init__(self, cfg, sim_params, physics_engine, device_type, device_id, headless):
@@ -979,10 +1031,12 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
             time_in_clip = torch.fmod(motion_times, motion_len)
             time_in_clip = torch.where(time_in_clip < 0, time_in_clip + motion_len, time_in_clip)
 
-            # Lookup gait cycle phase from pre-computed table
-            frame_idx = (time_in_clip / self._gait_motion_length * self._gait_phase_num_samples).long()
+            # Lookup per-clip gait cycle phase from pre-computed table
+            cur_motion_ids = self._sampled_motion_ids[env_ids]                     # [N]
+            cur_motion_len = self._gait_motion_lengths[cur_motion_ids]             # [N]
+            frame_idx = (time_in_clip / cur_motion_len * self._gait_phase_num_samples).long()
             frame_idx = frame_idx.clamp(0, self._gait_phase_num_samples - 1)
-            gait_phase = self._gait_phase_table[frame_idx]
+            gait_phase = self._gait_phase_table[cur_motion_ids, frame_idx]         # [N]
 
             phase_obs = torch.stack([
                 torch.sin(2 * math.pi * gait_phase),
@@ -993,84 +1047,67 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
         return obs
 
     def _precompute_gait_phase(self):
-        """Pre-compute gait cycle phase from reference motion foot heights.
+        """Pre-compute per-clip gait cycle phase tables.
 
-        Detects right heel strikes (local minima of right ankle height) in the
-        reference motion and assigns phase 0→1 between consecutive heel strikes,
-        representing one full gait cycle (right heel strike → next right heel strike).
+        For each motion loaded into self._motion_lib, detect right heel strikes
+        as local minima of R_Ankle z-height and build a 0→1 phase array sampled
+        at 1000 points across the clip duration. Tables are stacked into
+        self._gait_phase_table of shape [num_clips, num_samples].
         """
         num_samples = 1000
-        motion_id = 0
-        motion_length = self._motion_lib._motion_lengths[motion_id].item()
-
-        # Sample reference motion at many time points
-        sample_times = torch.linspace(0, motion_length - 1e-4, num_samples, device=self.device)
-        motion_ids = torch.zeros(num_samples, dtype=torch.long, device=self.device)
-        offsets = torch.zeros(num_samples, 3, device=self.device)
-
-        motion_res = self._motion_lib.get_motion_state(motion_ids, sample_times, offset=offsets)
-        rb_pos = motion_res["rg_pos"]  # [num_samples, num_bodies, 3]
-
-        # Body index: R_Ankle=7 (from mujoco_joint_names order)
+        num_clips = self._motion_lib._motion_lengths.shape[0]
+        device = self.device
         r_ankle_id = self._build_key_body_ids_tensor(["R_Ankle"]).item()
-        r_ankle_height = rb_pos[:, r_ankle_id, 2]  # [num_samples]
+        min_interval_s = getattr(self, "_vic_gait_hs_min_interval_s", 0.5)
 
-        # Detect heel strikes as local minima of foot height
-        h = r_ankle_height
-        local_min = (h[1:-1] < h[:-2]) & (h[1:-1] <= h[2:])
-        min_indices = torch.where(local_min)[0] + 1
+        phase_table = torch.zeros(num_clips, num_samples, device=device)
+        motion_lengths = self._motion_lib._motion_lengths.clone().to(device)
+        n_hs_per_clip = torch.zeros(num_clips, dtype=torch.long, device=device)
+        stride_mean_per_clip = torch.full((num_clips,), float("nan"), device=device)
 
-        # Filter: keep only minima with sufficient separation (> 0.5s)
-        if len(min_indices) > 0:
-            filtered = [min_indices[0].item()]
-            for i in range(1, len(min_indices)):
-                if sample_times[min_indices[i]] - sample_times[filtered[-1]] > 0.5:
-                    filtered.append(min_indices[i].item())
-            min_indices = torch.tensor(filtered, dtype=torch.long, device=self.device)
+        offsets = torch.zeros(num_samples, 3, device=device)
 
-        # Build gait phase table
-        gait_phase = torch.zeros(num_samples, device=self.device)
+        for cid in range(num_clips):
+            motion_length = motion_lengths[cid].item()
+            if motion_length <= 0.1:
+                phase_table[cid] = torch.linspace(0.0, 1.0, num_samples, device=device)
+                continue
 
-        if len(min_indices) >= 2:
-            hs_times = sample_times[min_indices]
+            sample_times = torch.linspace(0, motion_length - 1e-4, num_samples, device=device)
+            motion_ids = torch.full((num_samples,), cid, dtype=torch.long, device=device)
+            motion_res = self._motion_lib.get_motion_state(motion_ids, sample_times, offset=offsets)
+            r_ankle_height = motion_res["rg_pos"][:, r_ankle_id, 2]
 
-            # Between consecutive heel strikes: phase 0→1
-            for i in range(len(hs_times) - 1):
-                t0 = hs_times[i].item()
-                t1 = hs_times[i + 1].item()
-                mask = (sample_times >= t0) & (sample_times < t1)
-                if mask.any():
-                    gait_phase[mask] = (sample_times[mask] - t0) / (t1 - t0)
+            hs_indices = _detect_heel_strikes_static(r_ankle_height, sample_times, min_interval_s)
+            n_hs_per_clip[cid] = len(hs_indices)
 
-            # Before first heel strike: extrapolate backwards using first stride period
-            stride_period = hs_times[1] - hs_times[0]
-            mask_before = sample_times < hs_times[0]
-            if mask_before.any():
-                gait_phase[mask_before] = ((sample_times[mask_before] - hs_times[0] + stride_period) / stride_period) % 1.0
-
-            # After last heel strike: extrapolate using last stride period
-            last_stride = hs_times[-1] - hs_times[-2]
-            mask_after = sample_times >= hs_times[-1]
-            if mask_after.any():
-                gait_phase[mask_after] = torch.clamp(
-                    (sample_times[mask_after] - hs_times[-1]) / last_stride, 0.0, 1.0
+            if len(hs_indices) >= 2:
+                phase_table[cid] = _build_phase_from_hs_static(
+                    sample_times, hs_indices, num_samples, device
                 )
+                hs_times = sample_times[torch.tensor(hs_indices, dtype=torch.long, device=device)]
+                strides = hs_times[1:] - hs_times[:-1]
+                stride_mean_per_clip[cid] = strides.mean()
+            else:
+                phase_table[cid] = sample_times / motion_length
 
-            avg_stride = (hs_times[-1] - hs_times[0]) / (len(hs_times) - 1)
-            print(f"[{self.__class__.__name__}] Gait phase precomputed: "
-                  f"{len(min_indices)} R heel strikes detected, "
-                  f"avg stride period: {avg_stride.item():.3f}s, "
-                  f"R_Ankle height range: [{r_ankle_height.min().item():.4f}, {r_ankle_height.max().item():.4f}]m")
-        else:
-            # Fallback: use clip-level phase
-            print(f"[{self.__class__.__name__}] WARNING: <2 heel strikes detected ({len(min_indices)}). "
-                  f"Falling back to clip-level phase. R_Ankle height range: "
-                  f"[{r_ankle_height.min().item():.4f}, {r_ankle_height.max().item():.4f}]m")
-            gait_phase = sample_times / motion_length
-
-        self._gait_phase_table = gait_phase  # [num_samples]
+        self._gait_phase_table = phase_table
         self._gait_phase_num_samples = num_samples
-        self._gait_motion_length = motion_length
+        self._gait_motion_lengths = motion_lengths
+
+        n_ok = int((n_hs_per_clip >= 2).sum().item())
+        strides_ok = stride_mean_per_clip[~torch.isnan(stride_mean_per_clip)]
+        stride_range = (
+            f"{strides_ok.min().item():.3f}-{strides_ok.max().item():.3f}s"
+            if len(strides_ok) > 0 else "n/a"
+        )
+        print(
+            f"[{self.__class__.__name__}] Gait phase precomputed: "
+            f"{num_clips} clips, {n_ok}/{num_clips} HS-detected, "
+            f"{num_clips - n_ok} linear fallback. "
+            f"HS count range: [{n_hs_per_clip.min().item()}, {n_hs_per_clip.max().item()}], "
+            f"stride period range: {stride_range}"
+        )
 
     def _compute_reward(self, actions):
         body_pos = self._rigid_body_pos
@@ -1477,9 +1514,10 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
                 curr_time = self.progress_buf * self.dt + self._motion_start_times + self._motion_start_times_offset
                 motion_len = self._motion_lib._motion_lengths[self._sampled_motion_ids]
                 time_in_clip = curr_time % motion_len
-                num_samples = len(self._gait_phase_table)
+                num_samples = self._gait_phase_num_samples
                 frame_idx = (time_in_clip / motion_len * num_samples).long().clamp(0, num_samples - 1)
-                gait_phase = self._gait_phase_table[frame_idx[0]].item()
+                env0_mid = self._sampled_motion_ids[0]
+                gait_phase = self._gait_phase_table[env0_mid, frame_idx[0]].item()
             else:
                 curr_time = self.progress_buf * self.dt + self._motion_start_times + self._motion_start_times_offset
                 motion_len = self._motion_lib._motion_lengths[self._sampled_motion_ids]

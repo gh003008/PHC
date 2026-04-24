@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KIT_425 단일-피험자 Multi-Clip + Phase-Obs Per-Clip 수정 + 3-Slot Ablation 계획 (2026-04-23)</title>
+<style>
+
+:root {
+  --fg: #1f2328;
+  --fg-muted: #656d76;
+  --bg: #ffffff;
+  --bg-code: #f6f8fa;
+  --bg-quote: #f6f8fa;
+  --border: #d0d7de;
+  --accent: #0969da;
+  --accent-bg: #ddf4ff;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; font-size: 15px; }
+body {
+  margin: 0 auto; max-width: 980px; padding: 2rem 2.5rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
+               Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  color: var(--fg); background: var(--bg); line-height: 1.6;
+}
+
+h1, h2, h3, h4 {
+  margin-top: 2rem; margin-bottom: 0.6rem;
+  font-weight: 600; line-height: 1.25;
+}
+h1 { font-size: 2rem; padding-bottom: 0.35em; border-bottom: 1px solid var(--border); }
+h2 { font-size: 1.5rem; padding-bottom: 0.3em; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.2rem; }
+h4 { font-size: 1rem; color: var(--fg-muted); }
+
+p { margin: 0.6rem 0; }
+hr { border: 0; border-top: 1px solid var(--border); margin: 2rem 0; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.88em;
+  background: var(--bg-code);
+  padding: 0.14em 0.36em;
+  border-radius: 4px;
+}
+pre {
+  background: var(--bg-code);
+  padding: 1rem; border-radius: 6px;
+  overflow-x: auto;
+  line-height: 1.45;
+  font-size: 0.85rem;
+}
+pre code { background: transparent; padding: 0; border-radius: 0; font-size: inherit; }
+
+blockquote {
+  margin: 0.8rem 0;
+  padding: 0.5rem 1rem;
+  color: var(--fg-muted);
+  background: var(--bg-quote);
+  border-left: 4px solid var(--border);
+  border-radius: 0 4px 4px 0;
+}
+blockquote p:first-child { margin-top: 0; }
+blockquote p:last-child { margin-bottom: 0; }
+
+table { border-collapse: collapse; margin: 1rem 0; width: 100%; font-size: 0.93em; }
+th, td { border: 1px solid var(--border); padding: 6px 13px; text-align: left; vertical-align: top; }
+th { background: var(--bg-code); font-weight: 600; }
+tr:nth-child(even) td { background: #fafbfc; }
+
+ul, ol { padding-left: 1.6em; margin: 0.5rem 0; }
+li { margin: 0.15rem 0; }
+li > p { margin: 0.3rem 0; }
+
+/* Task list (GitHub-flavored markdown) */
+li input[type="checkbox"] {
+  margin-right: 0.45em; vertical-align: middle;
+  transform: translateY(-1px);
+}
+ul.task-list, ol.task-list { list-style-type: none; padding-left: 0.5em; }
+li.task-list-item { list-style-type: none; }
+
+/* Layout tweaks for long code lines in tables */
+td pre, td code { white-space: pre-wrap; word-break: break-word; }
+
+/* Strong / emphasis refinement */
+strong { font-weight: 600; }
+
+/* Print-friendly */
+@media print {
+  body { max-width: none; padding: 1rem; }
+  pre, blockquote { page-break-inside: avoid; }
+  h1, h2, h3 { page-break-after: avoid; }
+}
+
+</style>
+</head>
+<body>
+<h1 id="kit_425-multi-clip-phase-obs-per-clip-3-slot-ablation-2026-04-23">KIT_425 단일-피험자 Multi-Clip + Phase-Obs Per-Clip 수정 + 3-Slot Ablation 계획 (2026-04-23)</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> 22-clip MULTICLIP_FWD 의 0 % 성공률 원인으로 지목된 phase-obs silent-corruption 문제를 해결하고, 단일-피험자 (KIT_425, 3 clip) 로 3-slot ablation (main / phase_obs off / cycle_motion on) 을 병렬 실행해 각 knob 의 기여도를 측정한다.</p>
+<p><strong>Architecture:</strong> (1) <code>HumanoidImVIC._precompute_gait_phase()</code> 의 <code>motion_id=0</code> 하드코딩을 per-clip lookup table <code>[num_clips, 1000]</code> 로 확장. (2) KIT_425 피험자 3 clip 서브셋을 학습 데이터로 사용 (단일-피험자 원칙). (3) 서버 GPU 3 슬롯 병렬로 <code>(cycle_motion, vic_phase_obs) ∈ {(F,T), (F,F), (T,T)}</code> 2×2 minus 1 factorial 실행. (4) 평가 metric 은 raw (av_steps / av_time_s / fall-free rate) — 단일 정량값 안 만듦.</p>
+<p><strong>Tech Stack:</strong> Python 3.8 + PyTorch 2.1 (local 검증), IsaacGym (서버 학습), rl-games, argparse yaml configs, sbatch on Slurm.</p>
+<hr />
+<h2 id="0">0. 현재 문제 (해결 대상)</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>문제</th>
+<th>증거</th>
+<th>해결</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P1</td>
+<td><code>_precompute_gait_phase</code> 가 <code>motion_id=0</code> 에만 테이블 계산</td>
+<td><code>humanoid_im_vic.py:1003-1004</code></td>
+<td>Task 4 (코드 수정)</td>
+</tr>
+<tr>
+<td>P2</td>
+<td>22 clip 중 14 개가 HS 검출 "성공" 이지만 stride CoV &gt; 0.3 (silent corruption)</td>
+<td><code>check_hs_detection_22clips.py</code> 결과</td>
+<td>Task 1 (KIT_425 로 교체하면 CoV &lt; 0.25 전원 통과)</td>
+</tr>
+<tr>
+<td>P3</td>
+<td>22 clip 의 피험자 다양성이 policy 학습 부담 (11 subject × 6 family) — 개인화 연구 원칙 위배</td>
+<td>피험자 breakdown</td>
+<td>Task 1 (KIT_425 단일-피험자로 고정)</td>
+</tr>
+<tr>
+<td>P4</td>
+<td>KIT_314 에 0.34 → 0.75 구간 0.41 m/s gap → retrieval 오차</td>
+<td>per-subject 분석</td>
+<td>Task 1 (KIT_425 는 gap 0.28/0.20 고름)</td>
+</tr>
+<tr>
+<td>P5</td>
+<td><code>cycle_motion: True</code> 가 clip wrap 불연속을 만들어 imitation reward 오염</td>
+<td>reward 함수 구조 분석</td>
+<td><strong>Task 6 의 Slot 1/2 가 cycle=False 로 설정하고 Slot 3 로 T/F 비교</strong></td>
+</tr>
+<tr>
+<td>P6</td>
+<td>초기 motion 샘플링이 clip 내 전구간 random → cycle=False 에서 episode 조기 종료</td>
+<td>logic 분석</td>
+<td>Task 5 (첫 30% 제한)</td>
+</tr>
+<tr>
+<td>P7</td>
+<td>Canonical ckpt 이 save-on-best 실패로 last-epoch state</td>
+<td><code>last_mean_rewards: -100500</code> sentinel</td>
+<td><strong>이번엔 건드리지 않음</strong>. Task 9 평가 시 milestone 중 best 손수 선택</td>
+</tr>
+<tr>
+<td>P8</td>
+<td>Phase-CCF 분석기 4-vs-8 group broadcasting 에러</td>
+<td>test-greedy 종료 로그</td>
+<td><strong>범위 밖</strong> — 학습 성능 무관</td>
+</tr>
+</tbody>
+</table>
+<p><strong>범위 밖</strong> (follow-up iteration): P8 (분석기 post-hoc fix), retime-aware phase lookup, HS 검출 amplitude-threshold 개선 (KIT_425 는 필요 없음), save-on-best 로직 자체 수정.</p>
+<hr />
+<h2 id="1-high-level">1. 해결 전략 (high-level)</h2>
+<ol>
+<li><strong>데이터 축소 (KIT_425 3 clip)</strong> 로 P2/P3/P4 일괄 해결. Dry-run 에서 HS CoV 0.19~0.23 으로 깨끗.</li>
+<li><strong>Per-clip phase fix</strong> 로 P1 제거.</li>
+<li><strong>3 slot ablation 병렬 실행</strong> — 피험자/데이터/코드 전부 동일하고 <code>(cycle_motion, vic_phase_obs)</code> 만 knob 으로 변경:<br />
+   - Slot 1 (MAIN): <code>(cycle=F, phase=T)</code> — 깨끗한 기본안.<br />
+   - Slot 2 (NOPHASE): <code>(cycle=F, phase=F)</code> — phase_obs 자체가 유용한가?<br />
+   - Slot 3 (LEGACY): <code>(cycle=T, phase=T)</code> — cycle_motion wrap 의 실제 피해량 정량화.</li>
+<li><strong>cycle_motion=False 주의사항</strong>: episode 가 clip_end 에서 자연 종료 → av_steps 상한이 clip 길이. 초기 motion 샘플링을 clip 첫 30% 로 제한하여 조기 종료 왜곡 방지.</li>
+<li><strong>Metric 은 raw 값 병렬 보고</strong>: av_steps / av_time_s / fall-free rate / clip_end rate. 단일 정량값 없음 — 세 slot 결과를 병렬 표로 사람이 판단.</li>
+<li><strong>실험은 NR variant 만.</strong> §1-3 결과로 RT ≈ NR 확정이므로 GPU 예산 절반 절약.</li>
+</ol>
+<h2 id="2-file-structure">2. File Structure</h2>
+<p><strong>새 파일</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>역할</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scripts/data/build_kit425_subset.py</code></td>
+<td>22-clip json 에서 KIT_425 3 clip 추출</td>
+</tr>
+<tr>
+<td><code>sample_data/amass_isaac_walking_primitive_kit425_only.json</code></td>
+<td>위 스크립트 산출물</td>
+</tr>
+<tr>
+<td><code>exp_config/forward_walking/260423_KIT425_PHASEFIX/env_im_walk_vic_kit425_main.yaml</code></td>
+<td>Slot 1 env (cycle=F, phase=T)</td>
+</tr>
+<tr>
+<td><code>exp_config/forward_walking/260423_KIT425_PHASEFIX/env_im_walk_vic_kit425_nophase.yaml</code></td>
+<td>Slot 2 env (cycle=F, phase=F)</td>
+</tr>
+<tr>
+<td><code>exp_config/forward_walking/260423_KIT425_PHASEFIX/env_im_walk_vic_kit425_legacy.yaml</code></td>
+<td>Slot 3 env (cycle=T, phase=T)</td>
+</tr>
+<tr>
+<td><code>exp_config/forward_walking/260423_KIT425_PHASEFIX/im_walk_vic_kit425.yaml</code></td>
+<td>공통 learning yaml (experiment_name 은 sbatch 에서 override)</td>
+</tr>
+<tr>
+<td><code>exp_config/forward_walking/260423_KIT425_PHASEFIX/train_kit425_main_gpu0.sh</code></td>
+<td>Slot 1 sbatch</td>
+</tr>
+<tr>
+<td><code>exp_config/forward_walking/260423_KIT425_PHASEFIX/train_kit425_nophase_gpu1.sh</code></td>
+<td>Slot 2 sbatch</td>
+</tr>
+<tr>
+<td><code>exp_config/forward_walking/260423_KIT425_PHASEFIX/train_kit425_legacy_gpu2.sh</code></td>
+<td>Slot 3 sbatch</td>
+</tr>
+<tr>
+<td><code>exp_config/forward_walking/260423_KIT425_PHASEFIX/test_kit425_main.sh</code></td>
+<td>Slot 1 test-greedy sbatch</td>
+</tr>
+<tr>
+<td><code>exp_config/forward_walking/260423_KIT425_PHASEFIX/test_kit425_nophase.sh</code></td>
+<td>Slot 2 test-greedy sbatch</td>
+</tr>
+<tr>
+<td><code>exp_config/forward_walking/260423_KIT425_PHASEFIX/test_kit425_legacy.sh</code></td>
+<td>Slot 3 test-greedy sbatch</td>
+</tr>
+<tr>
+<td><code>exp_config/forward_walking/260423_KIT425_PHASEFIX/README.md</code></td>
+<td>3 슬롯 구성 및 명명 규칙 문서 (다른 Claude 세션 참조용)</td>
+</tr>
+<tr>
+<td><code>tests/test_gait_phase_per_clip.py</code></td>
+<td>local 단위 테스트</td>
+</tr>
+</tbody>
+</table>
+<p><strong>수정 파일</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>변경 내용</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>phc/env/tasks/humanoid_im_vic.py</code></td>
+<td><code>_precompute_gait_phase</code> per-clip 화 (Task 4); 두 phase lookup site 의 인덱싱 변경</td>
+</tr>
+<tr>
+<td><code>phc/env/tasks/humanoid_im.py</code></td>
+<td>termination reason 플래그 추가 + <code>_sample_time</code> 의 초기 motion 샘플링 첫 30% 제한 (Task 5)</td>
+</tr>
+<tr>
+<td><code>phc/learning/im_amp_players.py</code></td>
+<td>평가 시 termination reason 집계 + fall-free/clip_end rate 출력 (Task 5)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="task-1-kit_425-json">Task 1: KIT_425 서브셋 JSON 생성</h2>
+<p><strong>Files:</strong><br />
+- Create: <code>scripts/data/build_kit425_subset.py</code><br />
+- Create: <code>sample_data/amass_isaac_walking_primitive_kit425_only.json</code></p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 1: 서브셋 추출 스크립트 작성</strong></li>
+</ul>
+<p>Path: <code>scripts/data/build_kit425_subset.py</code></p>
+<pre><code class="language-python">&quot;&quot;&quot;Extract KIT_425 single-subject subset from the 22-forward-clip JSON.&quot;&quot;&quot;
+import json
+import re
+from pathlib import Path
+
+SRC = Path(&quot;sample_data/amass_isaac_walking_primitive_fwd_only.json&quot;)
+OUT = Path(&quot;sample_data/amass_isaac_walking_primitive_kit425_only.json&quot;)
+SUBJECT = &quot;425&quot;
+
+
+def main():
+    with open(SRC) as f:
+        meta = json.load(f)
+
+    kept = {}
+    for key, v in meta.items():
+        mm = re.match(r&quot;\d+-KIT_(\d+)_&quot;, key)
+        if mm and mm.group(1) == SUBJECT:
+            kept[key] = v
+
+    kept_sorted = dict(sorted(kept.items(), key=lambda kv: abs(kv[1][&quot;v_x_mean_mid&quot;])))
+    with open(OUT, &quot;w&quot;) as f:
+        json.dump(kept_sorted, f, indent=2)
+
+    print(f&quot;Extracted {len(kept_sorted)} clips for KIT_{SUBJECT}:&quot;)
+    for k, v in kept_sorted.items():
+        print(f&quot;  |v_x|={abs(v['v_x_mean_mid']):.3f}  dur={v['duration_s']:.2f}s  {k}&quot;)
+    print(f&quot;Wrote {OUT}&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    main()
+</code></pre>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 2: 스크립트 실행</strong></li>
+</ul>
+<p>Run: <code>python scripts/data/build_kit425_subset.py</code></p>
+<p>Expected output:</p>
+<pre><code>Extracted 3 clips for KIT_425:
+  |v_x|=0.371  dur=6.50s  0-KIT_425_walking_03_poses
+  |v_x|=0.652  dur=5.40s  0-KIT_425_walking_medium08_poses
+  |v_x|=0.845  dur=4.23s  0-KIT_425_walking_medium05_poses
+Wrote sample_data/amass_isaac_walking_primitive_kit425_only.json
+</code></pre>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 3: 커밋</strong></li>
+</ul>
+<pre><code class="language-bash">git add scripts/data/build_kit425_subset.py \
+        sample_data/amass_isaac_walking_primitive_kit425_only.json
+git commit -m &quot;data: KIT_425 3-clip forward-walking subset for per-subject experiment&quot;
+</code></pre>
+<hr />
+<h2 id="task-2-kit_425-hs">Task 2: KIT_425 에 대한 HS 검출 품질 재확인</h2>
+<p><strong>Files:</strong><br />
+- Modify: <code>scripts/data/check_hs_detection_22clips.py</code> (CLI 인자화)</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 1: 스크립트 일반화</strong></li>
+</ul>
+<p><code>scripts/data/check_hs_detection_22clips.py</code> 의 <code>main()</code> 을:</p>
+<pre><code class="language-python">def main():
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument(&quot;--json&quot;, default=&quot;sample_data/amass_isaac_walking_primitive_fwd_only.json&quot;,
+                   help=&quot;Forward-subset metadata JSON path&quot;)
+    p.add_argument(&quot;--pkl&quot;, default=&quot;sample_data/amass_isaac_walking_primitive.pkl&quot;,
+                   help=&quot;Source motion pkl&quot;)
+    args = p.parse_args()
+
+    pkl_path = Path(args.pkl)
+    fwd_json = Path(args.json)
+    # ... 기존 로직 그대로 ...
+</code></pre>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 2: KIT_425 서브셋에 대해 실행</strong></li>
+</ul>
+<p>Run: <code>PYTHONIOENCODING=utf-8 python scripts/data/check_hs_detection_22clips.py --json sample_data/amass_isaac_walking_primitive_kit425_only.json</code></p>
+<p>Expected: <code>3/3 detection success (100.0%)</code>, stride CoV 각 0.19~0.23 범위.</p>
+<p>CoV &gt; 0.35 면 regression — 스크립트 diff 점검.</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 3: 커밋</strong></li>
+</ul>
+<pre><code class="language-bash">git add scripts/data/check_hs_detection_22clips.py
+git commit -m &quot;tools: make HS-detection dry-run script take --json arg&quot;
+</code></pre>
+<hr />
+<h2 id="task-3-heel-strike-detector">Task 3: 로컬 단위 테스트 작성 (heel-strike detector)</h2>
+<p><strong>Files:</strong><br />
+- Create: <code>tests/test_gait_phase_per_clip.py</code></p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 1: 실패할 테스트 먼저 작성</strong></li>
+</ul>
+<p>Path: <code>tests/test_gait_phase_per_clip.py</code></p>
+<pre><code class="language-python">&quot;&quot;&quot;Local unit test for gait-phase detector (CPU-only, no IsaacGym).&quot;&quot;&quot;
+import math
+import pytest
+import torch
+
+from phc.env.tasks.humanoid_im_vic import (
+    _detect_heel_strikes_static,
+    _build_phase_from_hs_static,
+)
+
+
+def _make_walking_signal(stride_s=1.0, duration_s=5.0, fps=30):
+    t = torch.linspace(0, duration_s - 1e-4, int(duration_s * fps))
+    z = 0.5 - 0.2 * torch.cos(2 * math.pi * t / stride_s)
+    return z, t
+
+
+def test_detect_heel_strikes_finds_expected_count():
+    z, t = _make_walking_signal(stride_s=1.0, duration_s=5.0, fps=30)
+    hs = _detect_heel_strikes_static(z, t, min_interval_s=0.5)
+    assert 4 &lt;= len(hs) &lt;= 5
+
+
+def test_detect_heel_strikes_filters_close_minima():
+    t = torch.linspace(0, 5 - 1e-4, 150)
+    z = 0.5 - 0.2 * torch.cos(2 * math.pi * t) + 0.05 * torch.cos(2 * math.pi * t / 0.1)
+    hs = _detect_heel_strikes_static(z, t, min_interval_s=0.5)
+    assert len(hs) &lt;= 6
+
+
+def test_build_phase_from_hs_monotone_in_cycle():
+    z, t = _make_walking_signal(stride_s=1.0, duration_s=5.0, fps=30)
+    hs = _detect_heel_strikes_static(z, t, min_interval_s=0.5)
+    phase = _build_phase_from_hs_static(t, hs, num_samples=len(t), device=&quot;cpu&quot;)
+    assert phase.min() &gt;= -1e-4
+    assert phase.max() &lt;= 1.0 + 1e-4
+    for i in range(len(hs) - 1):
+        idx_lo, idx_hi = hs[i], hs[i + 1]
+        seg = phase[idx_lo:idx_hi]
+        if len(seg) &gt;= 2:
+            diffs = seg[1:] - seg[:-1]
+            assert (diffs &gt;= -1e-3).all()
+
+
+def test_detect_heel_strikes_returns_empty_on_flat():
+    t = torch.linspace(0, 5 - 1e-4, 150)
+    z = torch.full_like(t, 0.5)
+    hs = _detect_heel_strikes_static(z, t, min_interval_s=0.5)
+    assert len(hs) == 0
+</code></pre>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 2: 테스트 실패 확인</strong></li>
+</ul>
+<p>Run: <code>pytest tests/test_gait_phase_per_clip.py -v</code></p>
+<p>Expected: <code>ImportError: cannot import name '_detect_heel_strikes_static'</code>.</p>
+<hr />
+<h2 id="task-4-humanoid_im_vicpy-per-clip-phase-table">Task 4: <code>humanoid_im_vic.py</code> 를 per-clip phase-table 로 리팩터링</h2>
+<p><strong>Files:</strong><br />
+- Modify: <code>phc/env/tasks/humanoid_im_vic.py:973-1073</code> (obs lookup + precompute method)<br />
+- Modify: <code>phc/env/tasks/humanoid_im_vic.py:1471-1488</code> (phase_ccf_log lookup)</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 1: Module-level helper 함수 2 개 추가</strong> (테스트에서 import 가능)</li>
+</ul>
+<p><code>phc/env/tasks/humanoid_im_vic.py</code> 파일 import block 바로 아래 (첫 class 정의 직전) 에 추가:</p>
+<pre><code class="language-python">def _detect_heel_strikes_static(z, sample_times, min_interval_s=0.5):
+    &quot;&quot;&quot;Detect right heel strikes as local minima of foot-height z with min separation.
+
+    Pure function so it can be unit-tested without IsaacGym.
+    &quot;&quot;&quot;
+    import torch
+    if z.shape[0] &lt; 3:
+        return []
+    local_min = (z[1:-1] &lt; z[:-2]) &amp; (z[1:-1] &lt;= z[2:])
+    min_indices = torch.where(local_min)[0] + 1
+    if len(min_indices) == 0:
+        return []
+    filtered = [min_indices[0].item()]
+    for i in range(1, len(min_indices)):
+        if sample_times[min_indices[i]] - sample_times[filtered[-1]] &gt; min_interval_s:
+            filtered.append(min_indices[i].item())
+    return filtered
+
+
+def _build_phase_from_hs_static(sample_times, hs_indices, num_samples, device):
+    &quot;&quot;&quot;Build per-sample gait phase in [0,1] given heel strike indices.&quot;&quot;&quot;
+    import torch
+    gait_phase = torch.zeros(num_samples, device=device)
+    if len(hs_indices) &lt; 2:
+        return sample_times / (sample_times[-1] + 1e-6)
+
+    hs_idx_tensor = torch.tensor(hs_indices, dtype=torch.long, device=device)
+    hs_times = sample_times[hs_idx_tensor]
+
+    for i in range(len(hs_times) - 1):
+        t0 = hs_times[i].item()
+        t1 = hs_times[i + 1].item()
+        mask = (sample_times &gt;= t0) &amp; (sample_times &lt; t1)
+        if mask.any():
+            gait_phase[mask] = (sample_times[mask] - t0) / (t1 - t0)
+
+    stride_period = hs_times[1] - hs_times[0]
+    mask_before = sample_times &lt; hs_times[0]
+    if mask_before.any():
+        gait_phase[mask_before] = (
+            (sample_times[mask_before] - hs_times[0] + stride_period) / stride_period
+        ) % 1.0
+
+    last_stride = hs_times[-1] - hs_times[-2]
+    mask_after = sample_times &gt;= hs_times[-1]
+    if mask_after.any():
+        gait_phase[mask_after] = torch.clamp(
+            (sample_times[mask_after] - hs_times[-1]) / last_stride, 0.0, 1.0
+        )
+    return gait_phase
+</code></pre>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 2: 테스트 통과 확인</strong></li>
+</ul>
+<p>Run: <code>pytest tests/test_gait_phase_per_clip.py -v</code></p>
+<p>Expected: 4 tests PASS.</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 3: <code>_precompute_gait_phase</code> 를 per-clip 으로 리팩터링</strong></li>
+</ul>
+<p>Replace <code>humanoid_im_vic.py:995-1073</code> (기존 method body 전체) 를:</p>
+<pre><code class="language-python">    def _precompute_gait_phase(self):
+        &quot;&quot;&quot;Pre-compute per-clip gait cycle phase tables.
+
+        For each motion loaded into self._motion_lib, detect right heel strikes
+        as local minima of R_Ankle z-height and build a 0→1 phase array sampled
+        at 1000 points across the clip duration. Tables are stacked into
+        self._gait_phase_table of shape [num_clips, num_samples].
+        &quot;&quot;&quot;
+        num_samples = 1000
+        num_clips = self._motion_lib._motion_lengths.shape[0]
+        device = self.device
+        r_ankle_id = self._build_key_body_ids_tensor([&quot;R_Ankle&quot;]).item()
+        min_interval_s = getattr(self, &quot;_vic_gait_hs_min_interval_s&quot;, 0.5)
+
+        phase_table = torch.zeros(num_clips, num_samples, device=device)
+        motion_lengths = self._motion_lib._motion_lengths.clone().to(device)
+        n_hs_per_clip = torch.zeros(num_clips, dtype=torch.long, device=device)
+        stride_mean_per_clip = torch.full((num_clips,), float(&quot;nan&quot;), device=device)
+
+        offsets = torch.zeros(num_samples, 3, device=device)
+
+        for cid in range(num_clips):
+            motion_length = motion_lengths[cid].item()
+            if motion_length &lt;= 0.1:
+                phase_table[cid] = torch.linspace(0.0, 1.0, num_samples, device=device)
+                continue
+
+            sample_times = torch.linspace(0, motion_length - 1e-4, num_samples, device=device)
+            motion_ids = torch.full((num_samples,), cid, dtype=torch.long, device=device)
+            motion_res = self._motion_lib.get_motion_state(motion_ids, sample_times, offset=offsets)
+            r_ankle_height = motion_res[&quot;rg_pos&quot;][:, r_ankle_id, 2]
+
+            hs_indices = _detect_heel_strikes_static(r_ankle_height, sample_times, min_interval_s)
+            n_hs_per_clip[cid] = len(hs_indices)
+
+            if len(hs_indices) &gt;= 2:
+                phase_table[cid] = _build_phase_from_hs_static(
+                    sample_times, hs_indices, num_samples, device
+                )
+                hs_times = sample_times[torch.tensor(hs_indices, dtype=torch.long, device=device)]
+                strides = hs_times[1:] - hs_times[:-1]
+                stride_mean_per_clip[cid] = strides.mean()
+            else:
+                phase_table[cid] = sample_times / motion_length
+
+        self._gait_phase_table = phase_table
+        self._gait_phase_num_samples = num_samples
+        self._gait_motion_lengths = motion_lengths
+
+        n_ok = int((n_hs_per_clip &gt;= 2).sum().item())
+        strides_ok = stride_mean_per_clip[~torch.isnan(stride_mean_per_clip)]
+        stride_range = (
+            f&quot;{strides_ok.min().item():.3f}-{strides_ok.max().item():.3f}s&quot;
+            if len(strides_ok) &gt; 0 else &quot;n/a&quot;
+        )
+        print(
+            f&quot;[{self.__class__.__name__}] Gait phase precomputed: &quot;
+            f&quot;{num_clips} clips, {n_ok}/{num_clips} HS-detected, &quot;
+            f&quot;{num_clips - n_ok} linear fallback. &quot;
+            f&quot;HS count range: [{n_hs_per_clip.min().item()}, {n_hs_per_clip.max().item()}], &quot;
+            f&quot;stride period range: {stride_range}&quot;
+        )
+</code></pre>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 4: 메인 obs 경로 lookup 변경</strong></li>
+</ul>
+<p>Replace <code>humanoid_im_vic.py:983-985</code>:</p>
+<pre><code class="language-python">            # Lookup gait cycle phase from pre-computed table
+            frame_idx = (time_in_clip / self._gait_motion_length * self._gait_phase_num_samples).long()
+            frame_idx = frame_idx.clamp(0, self._gait_phase_num_samples - 1)
+            gait_phase = self._gait_phase_table[frame_idx]
+</code></pre>
+<p>with:</p>
+<pre><code class="language-python">            # Lookup per-clip gait cycle phase from pre-computed table
+            cur_motion_ids = self._sampled_motion_ids[env_ids]                     # [N]
+            cur_motion_len = self._gait_motion_lengths[cur_motion_ids]             # [N]
+            frame_idx = (time_in_clip / cur_motion_len * self._gait_phase_num_samples).long()
+            frame_idx = frame_idx.clamp(0, self._gait_phase_num_samples - 1)
+            gait_phase = self._gait_phase_table[cur_motion_ids, frame_idx]         # [N]
+</code></pre>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 5: phase_ccf_log 경로 lookup 변경</strong></li>
+</ul>
+<p>Replace <code>humanoid_im_vic.py:1480-1482</code>:</p>
+<pre><code class="language-python">                num_samples = len(self._gait_phase_table)
+                frame_idx = (time_in_clip / motion_len * num_samples).long().clamp(0, num_samples - 1)
+                gait_phase = self._gait_phase_table[frame_idx[0]].item()
+</code></pre>
+<p>with:</p>
+<pre><code class="language-python">                num_samples = self._gait_phase_num_samples
+                frame_idx = (time_in_clip / motion_len * num_samples).long().clamp(0, num_samples - 1)
+                env0_mid = self._sampled_motion_ids[0]
+                gait_phase = self._gait_phase_table[env0_mid, frame_idx[0]].item()
+</code></pre>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 6: 커밋</strong></li>
+</ul>
+<pre><code class="language-bash">git add phc/env/tasks/humanoid_im_vic.py tests/test_gait_phase_per_clip.py
+git commit -m &quot;feat(vic): per-clip gait phase table (fix motion_id=0 hardcoding)&quot;
+</code></pre>
+<hr />
+<h2 id="task-5-termination-reason-motion-30">Task 5: Termination reason 로깅 + 초기 motion 샘플링 첫 30% 제한</h2>
+<p><strong>Files:</strong><br />
+- Modify: <code>phc/env/tasks/humanoid_im.py</code> (reset reason 플래그 + <code>_sample_time</code> 수정)<br />
+- Modify: <code>phc/learning/im_amp_players.py</code> (평가 loop 에서 reason 집계 + 출력)</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 1: reset reason 플래그 추가</strong></li>
+</ul>
+<p><code>phc/env/tasks/humanoid_im.py:1492~</code> 의 <code>_compute_reset()</code> 메서드를 찾고, return 직전에 다음 라인들을 추가:</p>
+<pre><code class="language-python">        # Record reset reason for evaluation (per env):
+        # 0: no reset, 1: fall, 2: clip_end, 3: max_episode
+        if not hasattr(self, '_last_reset_reason'):
+            self._last_reset_reason = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+        self._last_reset_reason[:] = 0
+        # fall mask is the per-env boolean that flags imitation-error or z-threshold termination.
+        # In PHC's existing code, this appears as a combined reset condition before cycle logic.
+        # The exact variable name depends on the class — grep &quot;reset_buf&quot; and find the line
+        # where pure-fall conditions are combined, and save that mask here as 'fall_mask_local'.
+        # Then:
+        self._last_reset_reason[fall_mask_local] = 1
+        self._last_reset_reason[pass_time_motion_len &amp; ~fall_mask_local] = 2
+        self._last_reset_reason[pass_time_max &amp; ~fall_mask_local &amp; ~pass_time_motion_len] = 3
+</code></pre>
+<p><strong>주의</strong>: <code>fall_mask_local</code> 의 정확한 변수명은 <code>_compute_reset</code> 본문을 읽고 확정해야 함 — 이미 fall 조건이 <code>self.reset_buf</code> 에 병합돼 있어 별도 추출이 필요. 구체 구현은 다음 step 에서.</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 2: fall mask 변수명 확정</strong></li>
+</ul>
+<p><code>humanoid_im.py</code> 의 <code>_compute_reset</code> 메서드 전체를 읽고 (대략 line 1492~1550), reset 이 발생하는 원인별 boolean tensor 들이 어떻게 조립되는지 파악:</p>
+<pre><code class="language-bash">grep -n &quot;reset_buf\|pass_time\|compute_humanoid_reset&quot; phc/env/tasks/humanoid_im.py | head -30
+</code></pre>
+<p><code>compute_humanoid_reset</code> (common util) 에서 오는 <code>reset_buf</code> 가 전체 reset 을 주지만, 안에 fall 조건만 따로 꺼내야 할 수도. 필요시 새 함수를 작성해 fall-only mask 를 계산. 대안으로 더 단순한 분류:</p>
+<ul>
+<li><code>pass_time_motion_len</code> = clip 종료</li>
+<li><code>pass_time_max</code> = max episode</li>
+<li>나머지 reset = fall (모든 다른 실패 원인)</li>
+</ul>
+<p>이 단순 분류를 쓰면:</p>
+<pre><code class="language-python">        fall_mask_local = self.reset_buf &amp; ~pass_time_motion_len &amp; ~pass_time_max
+        self._last_reset_reason[:] = 0
+        self._last_reset_reason[pass_time_motion_len] = 2
+        self._last_reset_reason[pass_time_max &amp; ~pass_time_motion_len] = 3
+        self._last_reset_reason[fall_mask_local] = 1
+</code></pre>
+<p>이 구현으로 Step 1 코드를 정리.</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 3: 초기 motion 샘플링 첫 30% 제한</strong></li>
+</ul>
+<p><code>humanoid_im.py</code> 의 <code>_sample_time</code> 또는 equivalent 를 찾기:</p>
+<pre><code class="language-bash">grep -n &quot;_sample_time\|motion_start_times&quot; phc/env/tasks/humanoid_im.py | head -20
+</code></pre>
+<p>대부분의 PHC variant 는 <code>_sample_time(self, motion_ids)</code> 같은 메서드에서 <code>torch.rand(N) * motion_lengths[motion_ids]</code> 형태로 랜덤 시간 샘플. 이를 cycle_motion 이 False 일 때만 <code>0.3 *</code> 곱해서 첫 30% 로 제한:</p>
+<pre><code class="language-python">    def _sample_time(self, motion_ids):
+        motion_lengths = self._motion_lib._motion_lengths[motion_ids]
+        if self.cycle_motion:
+            # full clip range (기존 동작)
+            return torch.rand(motion_ids.shape[0], device=self.device) * motion_lengths
+        else:
+            # cycle=False: episode 가 clip_end 에서 자연 종료되므로,
+            # 시작 시간을 clip 첫 30% 로 제한해서 최소 70% 의 clip 을 재생 보장.
+            return torch.rand(motion_ids.shape[0], device=self.device) * motion_lengths * 0.3
+</code></pre>
+<p>만약 기존 <code>_sample_time</code> 이 다른 클래스에 override 돼 있으면 (예: <code>humanoid_im_vic.py</code> 에서), 거기도 동일 로직 적용.</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 4: 평가 loop 에서 termination reason 집계</strong></li>
+</ul>
+<p><code>phc/learning/im_amp_players.py</code> 에서 평가 메인 루프를 찾기:</p>
+<pre><code class="language-bash">grep -n &quot;av_reward\|av_steps\|done\|reset&quot; phc/learning/im_amp_players.py | head -20
+</code></pre>
+<p>done event 발생 시 <code>env._last_reset_reason</code> 을 읽어 누적하는 로직 추가. 대략:</p>
+<pre><code class="language-python">        # 집계용 카운터 초기화 (평가 시작 전)
+        reason_counts = {'fall': 0, 'clip_end': 0, 'max_episode': 0, 'other': 0}
+
+        # 매 step 평가 루프 안에서, done 이 True 인 env 마다:
+        done_ids = torch.where(dones)[0]
+        if len(done_ids) &gt; 0 and hasattr(env, '_last_reset_reason'):
+            for env_id in done_ids.tolist():
+                r = env._last_reset_reason[env_id].item()
+                if r == 1:
+                    reason_counts['fall'] += 1
+                elif r == 2:
+                    reason_counts['clip_end'] += 1
+                elif r == 3:
+                    reason_counts['max_episode'] += 1
+                else:
+                    reason_counts['other'] += 1
+
+        # 루프 종료 후 출력 추가:
+        total_eps = sum(reason_counts.values())
+        if total_eps &gt; 0:
+            print(f&quot;Termination reasons over {total_eps} episodes:&quot;)
+            for reason, cnt in reason_counts.items():
+                print(f&quot;  {reason}: {cnt} ({100*cnt/total_eps:.1f}%)&quot;)
+            print(f&quot;Fall-free rate: {100*(1 - reason_counts['fall']/total_eps):.1f}%&quot;)
+            if reason_counts['clip_end'] &gt; 0:
+                print(f&quot;Clip-end rate:  {100*reason_counts['clip_end']/total_eps:.1f}%&quot;)
+</code></pre>
+<p>정확한 변수명 (<code>dones</code>, <code>env</code>) 은 평가 함수 내 실제 변수에 맞춰 조정.</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 5: 커밋</strong></li>
+</ul>
+<pre><code class="language-bash">git add phc/env/tasks/humanoid_im.py phc/learning/im_amp_players.py
+git commit -m &quot;feat: termination reason logging + init motion sampling 30% clamp for cycle=False&quot;
+</code></pre>
+<hr />
+<h2 id="task-6-3-yaml-sbatch-readme">Task 6: 3 슬롯 실험 설정 (yaml + sbatch + README) 생성</h2>
+<p><strong>Files:</strong><br />
+- Create: 3 × env yaml, 1 × learning yaml, 6 × sbatch, 1 × README (§2 File Structure 참조)</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 1: 디렉토리 생성 + 기존 NR yaml 로부터 base env 작성</strong></li>
+</ul>
+<pre><code class="language-bash">mkdir -p exp_config/forward_walking/260423_KIT425_PHASEFIX
+</code></pre>
+<p><code>env_im_walk_vic_kit425_main.yaml</code> (Slot 1 — MAIN, cycle=False, phase_obs=True):</p>
+<pre><code class="language-bash">cp exp_config/forward_walking/260421_AMASS_MULTICLIP_FWD/env_im_walk_vic_multiclip_fwd_NR.yaml \
+   exp_config/forward_walking/260423_KIT425_PHASEFIX/env_im_walk_vic_kit425_main.yaml
+</code></pre>
+<p>그리고 yaml 필드를 다음과 같이 편집:</p>
+<table>
+<thead>
+<tr>
+<th>필드</th>
+<th>값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>project_name</code></td>
+<td><code>"PHC_Walk_KIT425_PHASEFIX"</code></td>
+</tr>
+<tr>
+<td><code>notes</code></td>
+<td><code>"KIT_425 Slot 1 MAIN: cycle=False, phase_obs=True, per-clip phase fix."</code></td>
+</tr>
+<tr>
+<td><code>env.cycle_motion</code></td>
+<td><code>False</code></td>
+</tr>
+<tr>
+<td><code>env.vic_phase_obs</code></td>
+<td><code>True</code></td>
+</tr>
+<tr>
+<td><code>env.multiclip_v_cmd_range</code></td>
+<td><code>[0.40, 0.82]</code></td>
+</tr>
+<tr>
+<td><code>env.multiclip_v_nat_path</code></td>
+<td><code>"sample_data/amass_isaac_walking_primitive_kit425_only.json"</code></td>
+</tr>
+<tr>
+<td><code>env.multiclip_retime_enabled</code></td>
+<td><code>False</code></td>
+</tr>
+<tr>
+<td>기타 (<code>vic_ccf_num_groups</code>, network, reward, etc.)</td>
+<td>기존 NR yaml 그대로 유지</td>
+</tr>
+</tbody>
+</table>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 2: Slot 2 env 작성 (NOPHASE)</strong></li>
+</ul>
+<pre><code class="language-bash">cp exp_config/forward_walking/260423_KIT425_PHASEFIX/env_im_walk_vic_kit425_main.yaml \
+   exp_config/forward_walking/260423_KIT425_PHASEFIX/env_im_walk_vic_kit425_nophase.yaml
+</code></pre>
+<p>변경 필드:</p>
+<table>
+<thead>
+<tr>
+<th>필드</th>
+<th>값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>notes</code></td>
+<td><code>"KIT_425 Slot 2 NOPHASE: cycle=False, phase_obs=False (ablation)."</code></td>
+</tr>
+<tr>
+<td><code>env.vic_phase_obs</code></td>
+<td><code>False</code></td>
+</tr>
+</tbody>
+</table>
+<p>(cycle_motion 은 main 과 같이 False 유지)</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 3: Slot 3 env 작성 (LEGACY)</strong></li>
+</ul>
+<pre><code class="language-bash">cp exp_config/forward_walking/260423_KIT425_PHASEFIX/env_im_walk_vic_kit425_main.yaml \
+   exp_config/forward_walking/260423_KIT425_PHASEFIX/env_im_walk_vic_kit425_legacy.yaml
+</code></pre>
+<p>변경 필드:</p>
+<table>
+<thead>
+<tr>
+<th>필드</th>
+<th>값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>notes</code></td>
+<td><code>"KIT_425 Slot 3 LEGACY: cycle=True, phase_obs=True (wrap 피해량 측정)."</code></td>
+</tr>
+<tr>
+<td><code>env.cycle_motion</code></td>
+<td><code>True</code></td>
+</tr>
+</tbody>
+</table>
+<p>(phase_obs 는 main 과 같이 True 유지)</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 4: 공통 learning yaml 작성</strong></li>
+</ul>
+<pre><code class="language-bash">cp exp_config/forward_walking/260421_AMASS_MULTICLIP_FWD/im_walk_vic_multiclip_fwd_NR.yaml \
+   exp_config/forward_walking/260423_KIT425_PHASEFIX/im_walk_vic_kit425.yaml
+</code></pre>
+<p>기존 <code>full_experiment_name</code> 필드는 지우거나 비워두고, 각 sbatch 스크립트가 <code>--experiment_name</code> CLI 로 override. 네트워크 / PPO / AMP 하이퍼는 기존 그대로 유지.</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 5: 3 × training sbatch 작성</strong></li>
+</ul>
+<p><code>train_kit425_main_gpu0.sh</code>:</p>
+<pre><code class="language-bash">#!/bin/bash
+#SBATCH --job-name=kit425_main
+#SBATCH --output=logs/kit425_main_%j.out
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --time=24:00:00
+
+source ~/.bashrc
+conda activate phc
+
+# 서버 repo 경로에 맞게 편집
+cd /path/to/PHC
+
+python phc/run.py \
+    --task HumanoidImVICCmdMultiClip \
+    --cfg_env exp_config/forward_walking/260423_KIT425_PHASEFIX/env_im_walk_vic_kit425_main.yaml \
+    --cfg_train exp_config/forward_walking/260423_KIT425_PHASEFIX/im_walk_vic_kit425.yaml \
+    --headless --num_envs 512 \
+    --experiment_name KIT425_MAIN
+</code></pre>
+<p><code>train_kit425_nophase_gpu1.sh</code>: 위 스크립트 복제, <code>--cfg_env ..._nophase.yaml</code>, <code>--experiment_name KIT425_NOPHASE</code>, <code>--job-name=kit425_nophase</code>.</p>
+<p><code>train_kit425_legacy_gpu2.sh</code>: 동일 패턴으로 <code>..._legacy.yaml</code>, <code>KIT425_LEGACY</code>, <code>kit425_legacy</code>.</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 6: 3 × test-greedy sbatch 작성</strong></li>
+</ul>
+<p><code>test_kit425_main.sh</code>:</p>
+<pre><code class="language-bash">#!/bin/bash
+#SBATCH --job-name=testg_kit425_main
+#SBATCH --output=logs/testg_kit425_main_%j.out
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --time=02:00:00
+
+source ~/.bashrc
+conda activate phc
+cd /path/to/PHC
+
+python phc/run.py \
+    --task HumanoidImVICCmdMultiClip \
+    --cfg_env exp_config/forward_walking/260423_KIT425_PHASEFIX/env_im_walk_vic_kit425_main.yaml \
+    --cfg_train exp_config/forward_walking/260423_KIT425_PHASEFIX/im_walk_vic_kit425.yaml \
+    --num_envs 1 --test --epoch -1 --no_virtual_display \
+    --experiment_name KIT425_MAIN
+</code></pre>
+<p><code>test_kit425_nophase.sh</code>, <code>test_kit425_legacy.sh</code>: 패턴 동일.</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 7: README.md 작성</strong></li>
+</ul>
+<p>Path: <code>exp_config/forward_walking/260423_KIT425_PHASEFIX/README.md</code></p>
+<pre><code class="language-markdown"># KIT_425 Phase-Fix Experiment (2026-04-23)
+
+KIT_425 피험자 3-clip 으로 multi-clip policy 학습. 2×2 factorial 의 3 cell 실행.
+
+## 슬롯 구성
+
+| Slot | experiment_name | yaml                                  | 특이사항 |
+|------|-----------------|---------------------------------------|----------|
+| #1   | KIT425_MAIN     | env_im_walk_vic_kit425_main.yaml      | cycle=False, phase_obs=True  (메인) |
+| #2   | KIT425_NOPHASE  | env_im_walk_vic_kit425_nophase.yaml   | cycle=False, phase_obs=False (phase obs ablation) |
+| #3   | KIT425_LEGACY   | env_im_walk_vic_kit425_legacy.yaml    | cycle=True,  phase_obs=True  (legacy wrap 비교) |
+
+공통: KIT_425 3 clip, per-clip phase fix 코드, NR variant, v_cmd [0.40, 0.82], 20k epoch, 512 envs.
+
+Wandb project: `PHC_Walk_KIT425_PHASEFIX` (공유).
+
+## 평가 Metric (단일 정량값 안 만듦, 병렬 보고)
+
+- `av_steps`          (raw, 평균 에피소드 길이, frames)
+- `av_time_s`         (`av_steps × dt`)
+- fall-free rate      (fall 아닌 이유로 종료된 에피소드 비율)
+- clip_end rate       (cycle=False 에서 자연 clip 종료 비율)
+- `max_possible_avg`  (cycle=False 시 clip 평균 길이, 참고값)
+
+## 참고 문서
+
+- Plan: `02_research_dev/260423_kit425_phase_fix_plan.md`
+- Results (TBD): `02_research_dev/YYMMDD_kit425_phasefix_results.md`
+</code></pre>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 8: 실행 권한 + 커밋</strong></li>
+</ul>
+<pre><code class="language-bash">chmod +x exp_config/forward_walking/260423_KIT425_PHASEFIX/*.sh
+git add exp_config/forward_walking/260423_KIT425_PHASEFIX/
+git commit -m &quot;config: KIT_425 3-slot ablation (main/nophase/legacy) setup&quot;
+</code></pre>
+<hr />
+<h2 id="task-7-smoke-test">Task 7: 서버 smoke-test</h2>
+<p><strong>Goal:</strong> 3 슬롯 각각의 <code>_precompute_gait_phase</code> 가 "3/3 HS-detected" 를 찍는지 확인.</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 1: 서버에서 3 개 test sbatch 제출 (학습 ckpt 없으므로 load 실패 상태에서 precompute 까지만 실행)</strong></li>
+</ul>
+<pre><code class="language-bash">sbatch exp_config/forward_walking/260423_KIT425_PHASEFIX/test_kit425_main.sh
+sbatch exp_config/forward_walking/260423_KIT425_PHASEFIX/test_kit425_nophase.sh
+sbatch exp_config/forward_walking/260423_KIT425_PHASEFIX/test_kit425_legacy.sh
+</code></pre>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 2: 각 로그에서 precompute 출력 확인</strong></li>
+</ul>
+<p><code>logs/testg_kit425_main_&lt;jobid&gt;.out</code> 등 3 개 로그에서:</p>
+<pre><code>[HumanoidImVICCmdMultiClip] Gait phase precomputed: 512 clips, 3/3 HS-detected, 509 linear fallback. HS count range: [0, 6], stride period range: 0.700-0.900s
+</code></pre>
+<p>(512 = motion_lib slot 수, 3 = eligible KIT_425 clip 수, 509 = non-eligible fallback)</p>
+<p>Slot 2 (NOPHASE) 는 <code>_precompute_gait_phase</code> 가 호출되지 않아 이 라인이 안 뜸 — 정상. 대신 obs dim 이 2 적게 설정됐는지 rl-games init 로그에서 확인.</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 3: 이상 있으면 rollback</strong></li>
+</ul>
+<p>3/3 이 아닌 수치가 나오면 Task 4 의 코드 재검토. 모든 슬롯이 동일 숫자여야 함 (같은 JSON 을 쓰므로).</p>
+<p><strong>No commit</strong> — 실행만.</p>
+<hr />
+<h2 id="task-8-3">Task 8: 본 학습 3 슬롯 병렬 제출</h2>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 1: 3 개 training sbatch 제출</strong></li>
+</ul>
+<pre><code class="language-bash">sbatch exp_config/forward_walking/260423_KIT425_PHASEFIX/train_kit425_main_gpu0.sh
+sbatch exp_config/forward_walking/260423_KIT425_PHASEFIX/train_kit425_nophase_gpu1.sh
+sbatch exp_config/forward_walking/260423_KIT425_PHASEFIX/train_kit425_legacy_gpu2.sh
+</code></pre>
+<p>예상 실행 시간: 각 ~8-10 시간.</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 2: 초기 1000 epoch 진행 상황 확인</strong></li>
+</ul>
+<p>각 로그 (<code>logs/kit425_{main,nophase,legacy}_&lt;jobid&gt;.out</code>) 에서:<br />
+- Epoch 1000 시점 av_reward 가 -50 이상, eps_len 이 30+ 로 상승 중.<br />
+- Slot 2 (NOPHASE) 는 obs 차원이 작아 초기 수렴이 조금 다를 수 있음 — 문제는 아님.<br />
+- Slot 3 (LEGACY) 는 cycle=True 라 eps_len 가 다른 둘보다 더 높게 올라감 (구조적으로).</p>
+<p>진행이 평탄 (eps_len 10 부근) 이면 config 오타 의심.</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 3: 20k epoch 완료 대기</strong></li>
+</ul>
+<p>결과 ckpts: <code>output/KIT425_{MAIN,NOPHASE,LEGACY}.pth</code> + milestones 8 개씩.</p>
+<p><strong>No commit</strong> — 학습 산출물은 <code>output/</code> (.gitignore).</p>
+<hr />
+<h2 id="task-9-3-test-greedy">Task 9: 3 슬롯 test-greedy 평가</h2>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 1: 3 개 test sbatch 제출</strong></li>
+</ul>
+<pre><code class="language-bash">sbatch exp_config/forward_walking/260423_KIT425_PHASEFIX/test_kit425_main.sh
+sbatch exp_config/forward_walking/260423_KIT425_PHASEFIX/test_kit425_nophase.sh
+sbatch exp_config/forward_walking/260423_KIT425_PHASEFIX/test_kit425_legacy.sh
+</code></pre>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 2: 각 로그에서 수치 추출</strong></li>
+</ul>
+<p>Task 5 에서 추가한 termination reason 출력 확인:</p>
+<pre><code>av_reward: X
+av_steps:  Y
+Termination reasons over N episodes:
+  fall: ... (X %)
+  clip_end: ... (Y %)
+  max_episode: ... (Z %)
+  other: ...
+Fall-free rate: ...
+Clip-end rate:  ...
+</code></pre>
+<p><code>av_time_s = av_steps * dt</code> 는 수동 계산 (dt = 1/30 ≈ 0.0333).</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 3: canonical ckpt 가 best 아닐 수 있음 주의</strong></li>
+</ul>
+<p><code>torch.load('output/KIT425_*.pth')['last_mean_rewards']</code> 가 <code>-100500</code> sentinel 이면, numbered milestone 중 best 을 손수 선택해서 재평가:</p>
+<pre><code class="language-bash">for ckpt in output/KIT425_MAIN_00002500.pth \
+            output/KIT425_MAIN_00005000.pth \
+            output/KIT425_MAIN_00007500.pth \
+            ...; do
+    python phc/run.py \
+        --task HumanoidImVICCmdMultiClip \
+        --cfg_env exp_config/forward_walking/260423_KIT425_PHASEFIX/env_im_walk_vic_kit425_main.yaml \
+        --cfg_train exp_config/forward_walking/260423_KIT425_PHASEFIX/im_walk_vic_kit425.yaml \
+        --num_envs 1 --test --epoch $(basename $ckpt .pth | sed 's/.*_0*//') \
+        --no_virtual_display --experiment_name KIT425_MAIN
+done
+</code></pre>
+<p>가장 성능 좋은 milestone 을 Slot 1 의 "대표 수치" 로. Slot 2/3 동일 처리.</p>
+<p><strong>No commit</strong> — 로그는 logs/.</p>
+<hr />
+<h2 id="task-10-3-md">Task 10: 3 슬롯 결과 분석 md 작성</h2>
+<p><strong>Files:</strong><br />
+- Create: <code>02_research_dev/&lt;YYMMDD&gt;_kit425_phasefix_results.md</code>  (평가 완료일 기준 YYMMDD)</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 1: 문서 템플릿 작성</strong></li>
+</ul>
+<p>구조 (한글):</p>
+<pre><code class="language-markdown"># KIT_425 3-Slot Ablation 결과 (YYYY-MM-DD)
+
+## 1. 설정 요약
+- Task: HumanoidImVICCmdMultiClip
+- Clips: KIT_425 3 개 (0.37 / 0.65 / 0.85 m/s)
+- v_cmd range: [0.40, 0.82]
+- Variant: NR (no retime)
+- Code: per-clip phase fix (commit &lt;hash&gt;), termination reason log (commit &lt;hash&gt;)
+
+## 2. 슬롯 구성
+| Slot | experiment_name | cycle_motion | phase_obs |
+|---|---|---|---|
+| #1 | KIT425_MAIN    | False | True  |
+| #2 | KIT425_NOPHASE | False | False |
+| #3 | KIT425_LEGACY  | True  | True  |
+
+## 3. Training trajectory (milestone sampling)
+| Epoch | MAIN rwd / eps_len | NOPHASE rwd / eps_len | LEGACY rwd / eps_len |
+|---|---|---|---|
+| 1000 | | | |
+| 2500 | | | |
+| ... | | | |
+| 20000 | | | |
+
+## 4. Test-greedy 결과 (best milestone 기준)
+| 지표 | MAIN | NOPHASE | LEGACY |
+|---|---|---|---|
+| best epoch | | | |
+| av_reward | | | |
+| av_steps | | | |
+| av_time_s | | | |
+| fall-free rate | | | |
+| clip_end rate | N/A (cycle=T) | | |
+
+## 5. 해석
+### 5.1 cycle_motion 의 영향 (MAIN vs LEGACY)
+(fall-free rate 차이 / 수치 근거 / 결론)
+
+### 5.2 phase_obs 의 영향 (MAIN vs NOPHASE)
+(수치 차이 / phase-fix 작업의 정당성 여부)
+
+### 5.3 종합
+(가장 유용한 설정 조합 / 다음 iteration 방향)
+
+## 6. 다음 단계
+(결과에 따라 작성)
+</code></pre>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 2: Task 9 의 수치로 표 채우기</strong></li>
+</ul>
+<p>Training log 에서 milestone reward / eps_len 뽑기 (매 2500 epoch). Test log 에서 §4 표 완성.</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 3: §5 해석 작성</strong></li>
+</ul>
+<p>각 ablation pair 의 차이를 수치로 근거 들어 서술. 특히:<br />
+- MAIN vs LEGACY fall-free rate 차이가 10%p 이상 → cycle_motion 이 명확히 해롭다.<br />
+- MAIN vs NOPHASE fall-free rate 차이가 5%p 미만 → phase_obs 의 기여가 미미 → 다음 iteration 에서 phase 가 아닌 다른 쪽 (contact obs, reward shaping) 으로.</p>
+<ul class="task-list">
+<li class="task-list-item"><input type="checkbox" disabled> <strong>Step 4: 커밋</strong></li>
+</ul>
+<pre><code class="language-bash">git add 02_research_dev/&lt;YYMMDD&gt;_kit425_phasefix_results.md
+git commit -m &quot;docs: KIT_425 3-slot ablation results (main/nophase/legacy)&quot;
+</code></pre>
+<hr />
+<h2 id="self-review">Self-Review</h2>
+<ul>
+<li><strong>Spec coverage</strong>: P1 (Task 4), P2/P3/P4 (Task 1 — 데이터 교체), P5 (Task 6 의 Slot 1/3 대조), P6 (Task 5), P7 (Task 9 milestone-pick 우회), P8 은 명시적 범위 밖.</li>
+<li><strong>Placeholder 스캔</strong>: <code>cd /path/to/PHC</code> 는 서버 경로라 실행자가 채워야 함 — 주석으로 명시. Task 5 의 <code>fall_mask_local</code> 변수명은 Step 2 에서 확정하도록 경로 지정. 나머지 "TODO" 는 없음.</li>
+<li><strong>Type consistency</strong>: <code>_gait_phase_table</code> 이 <code>[num_clips, num_samples]</code> 로 일관, 두 lookup site 모두 <code>motion_ids</code> 인덱싱. <code>_gait_motion_length</code> (scalar) 는 <code>_gait_motion_lengths</code> (vector) 로 완전 대체. <code>_last_reset_reason</code> 은 <code>[num_envs]</code> long tensor.</li>
+</ul>
+<hr />
+<h2 id="execution">Execution 선택</h2>
+<p><strong>Plan complete and saved to <code>02_research_dev/260423_kit425_phase_fix_plan.md</code>.</strong></p>
+<p><strong>Two execution options:</strong></p>
+<p><strong>1. Subagent-Driven (recommended)</strong> — task 별로 fresh subagent 배치, 중간 리뷰 포함. Task 4 (phase fix) 와 Task 5 (termination reason) 는 각각 위험 요소 (code 리팩터링) 이므로 독립 agent 로 돌리고 리뷰 권장.</p>
+<p><strong>2. Inline Execution</strong> — 현재 세션에서 <code>superpowers:executing-plans</code> 로 batch 실행. Task 사이 checkpoint 로 사용자 검토.</p>
+<p><strong>어느 방식으로 진행할까?</strong></p>
+</body>
+</html>

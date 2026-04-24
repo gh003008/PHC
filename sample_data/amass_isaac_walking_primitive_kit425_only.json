@@ -1,0 +1,35 @@
+{
+  "0-KIT_425_walking_03_poses": {
+    "duration_s": 6.5,
+    "fps": 30.0,
+    "n_frames": 195,
+    "v_x_mean_mid": -0.37093743681907654,
+    "v_y_mean_mid": -0.015874527394771576,
+    "v_mag_mid": 0.37127696219118383,
+    "yaw_rate_mean_mid": -0.009277782402932644,
+    "dir_class": "forward_straight",
+    "is_forward_straight": true
+  },
+  "0-KIT_425_walking_medium08_poses": {
+    "duration_s": 5.4,
+    "fps": 30.0,
+    "n_frames": 162,
+    "v_x_mean_mid": -0.6516761779785156,
+    "v_y_mean_mid": -0.013968043960630894,
+    "v_mag_mid": 0.6518258564960215,
+    "yaw_rate_mean_mid": 0.02502690814435482,
+    "dir_class": "forward_straight",
+    "is_forward_straight": true
+  },
+  "0-KIT_425_walking_medium05_poses": {
+    "duration_s": 4.233333333333333,
+    "fps": 30.0,
+    "n_frames": 127,
+    "v_x_mean_mid": -0.8450572490692139,
+    "v_y_mean_mid": -0.020948676392436028,
+    "v_mag_mid": 0.8453168644047168,
+    "yaw_rate_mean_mid": -0.029795467853546143,
+    "dir_class": "forward_straight",
+    "is_forward_straight": true
+  }
+}
