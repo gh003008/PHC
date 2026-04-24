@@ -66,7 +66,7 @@ def test_compute_foot_anchor_rolling_smooths_noise():
     foot_world[:, 0] = np.random.normal(0, 0.005, T)  # ±5 mm noise on x
     stance = np.ones(T, dtype=bool)
     anchor = compute_foot_anchor(foot_world, stance, window=9)
-    # Input std ~5mm, output std should be < 2mm (rolling smoothing ~ sqrt(window) improvement)
+    # Input std ~5mm, output std should be < 3mm (rolling smoothing ~ sqrt(window) improvement with edge truncation)
     assert foot_world[:, 0].std() > 0.003
     assert anchor[:, 0].std() < 0.003  # 3mm — robust to edge truncation with window=9
 

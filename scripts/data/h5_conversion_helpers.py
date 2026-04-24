@@ -166,4 +166,18 @@ def solve_pelvis_ip(anchor_L, anchor_R, grf_L, grf_R,
         pelvis_world: [T, 3]. Frames where grf_L + grf_R < eps (flight) are NaN —
         caller is responsible for fallback.
     """
-    raise NotImplementedError
+    T = anchor_L.shape[0]
+    total = grf_L + grf_R
+    # Where total is below eps, mark NaN — caller handles flight-phase fallback
+    valid = total > eps
+    # Avoid div-by-zero (NaN frames get overwritten next)
+    w_L = np.where(valid, grf_L / np.maximum(total, eps), 0.5)
+    w_R = 1.0 - w_L
+    target_anchor = w_L[:, None] * anchor_L + w_R[:, None] * anchor_R
+    target_offset = w_L[:, None] * foot_offset_L + w_R[:, None] * foot_offset_R
+    # Per-frame: pelvis = target_anchor - R @ target_offset
+    # Use einsum for batch matmul: R_pelvis [T,3,3] @ target_offset [T,3] → [T,3]
+    rotated_offset = np.einsum('tij,tj->ti', R_pelvis, target_offset)
+    pelvis = target_anchor - rotated_offset
+    pelvis[~valid] = np.nan
+    return pelvis
