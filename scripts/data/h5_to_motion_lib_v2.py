@@ -165,7 +165,95 @@ def euler_xyz_deg_to_axis_angle(euler_deg):
     return rot.as_rotvec().astype(np.float64)
 
 
-def compute_root_translation(f, trial_path, fps_in, fps_out):
+def read_grf(f, trial_path, side):
+    """Read vertical GRF for one foot. Returns [T] Newtons, NaN-interpolated, at input fps.
+
+    Returns None if the H5 lacks GRF data (legacy trials).
+    side: 'left' or 'right'.
+
+    Step 3 H5 introspection (S001/level_100mps/lv0/trial_01/treadmill) showed only:
+      treadmill/left/distance_leftbelt, treadmill/left/speed_leftbelt
+      treadmill/pitch
+      treadmill/right/distance_rightbelt, treadmill/right/speed_rightbelt
+    No GRF channels exist in the current H5 — read_grf will always return None
+    for this dataset. Candidates kept for future datasets.
+    """
+    candidates = [
+        # Primary: vertical GRF (z-axis in this H5 convention)
+        f"{trial_path}/treadmill/{side}/grf_z",
+        f"{trial_path}/treadmill/{side}/grf_vertical",
+        f"{trial_path}/forceplate/{side}/grf_z",
+        # Fallback: some datasets may label vertical as y
+        f"{trial_path}/treadmill/{side}/grf_y",
+        f"{trial_path}/forceplate/{side}/grf_y",
+    ]
+    for path in candidates:
+        try:
+            v = np.array(f[path], dtype=np.float64)
+            nn = np.isnan(v)
+            if nn.any() and not nn.all():
+                v[nn] = np.interp(np.flatnonzero(nn), np.flatnonzero(~nn), v[~nn])
+            elif nn.all():
+                return np.zeros(len(v), dtype=np.float64)
+            return np.abs(v)   # magnitude, sign-agnostic
+        except KeyError:
+            continue
+    return None
+
+
+def fk_feet(skeleton_tree, pose_quat_global_xyzw, trans):
+    """Forward kinematics: compute ankle world positions and pelvis-local offsets.
+
+    Uses poselib's SkeletonState (already a project dependency).
+
+    Args:
+        skeleton_tree: poselib SkeletonTree.
+        pose_quat_global_xyzw: [T, 24, 4] global-frame quaternions (xyzw).
+        trans: [T, 3] pelvis world position.
+
+    Returns:
+        foot_L_world: [T, 3]  L_Ankle world pos (SMPL index 7 in MUJOCO order)
+        foot_R_world: [T, 3]  R_Ankle world pos (SMPL index 8)
+        foot_offset_L: [T, 3] L_Ankle pos in pelvis-local frame
+        foot_offset_R: [T, 3] R_Ankle pos in pelvis-local frame
+        R_pelvis: [T, 3, 3]   pelvis world rotation matrix
+
+    Note on coordinate frame:
+        Inputs (`pose_quat_global_xyzw`, `trans`) and outputs are in whatever
+        frame the caller passes. At the Task 6 insertion point, this is Y-up
+        pre-upright space — the later `upright.apply()` converts to Z-up.
+        Callers MUST pass data from before the upright transform.
+    """
+    import torch
+    from poselib.poselib.skeleton.skeleton3d import SkeletonState
+    r = torch.from_numpy(pose_quat_global_xyzw).float()
+    t = torch.from_numpy(trans).float()
+    state = SkeletonState.from_rotation_and_root_translation(
+        skeleton_tree, r=r, t=t, is_local=False
+    )
+    # state.global_translation: [T, N_joints, 3]
+    gt = state.global_translation.numpy()
+    # Indices in MUJOCO/PHC-augmented SMPL order (used by this pipeline):
+    # 0 = Pelvis, 7 = L_Ankle, 8 = R_Ankle (verified via skeleton_tree.node_names)
+    names = list(skeleton_tree.node_names)
+    IDX_PELVIS = names.index("Pelvis") if "Pelvis" in names else 0
+    IDX_L_ANK = names.index("L_Ankle") if "L_Ankle" in names else 7
+    IDX_R_ANK = names.index("R_Ankle") if "R_Ankle" in names else 8
+    foot_L_world = gt[:, IDX_L_ANK, :]
+    foot_R_world = gt[:, IDX_R_ANK, :]
+    pelvis_world = gt[:, IDX_PELVIS, :]
+    # Pelvis rotation matrix from pose_quat_global[:, 0] (xyzw)
+    q = pose_quat_global_xyzw[:, IDX_PELVIS, :]
+    R_pelvis = sRot.from_quat(q).as_matrix()  # [T, 3, 3]
+    # foot offset in pelvis-local frame = R_pelvis^T @ (foot_world - pelvis_world)
+    diff_L = foot_L_world - pelvis_world
+    diff_R = foot_R_world - pelvis_world
+    foot_offset_L = np.einsum('tij,tj->ti', R_pelvis.transpose(0, 2, 1), diff_L)
+    foot_offset_R = np.einsum('tij,tj->ti', R_pelvis.transpose(0, 2, 1), diff_R)
+    return foot_L_world, foot_R_world, foot_offset_L, foot_offset_R, R_pelvis
+
+
+def compute_root_translation(f, trial_path, fps_in, fps_out, pelvis_lat_scale=1.0):
     """Compute root translation from CoM and treadmill data.
 
     Treadmill walking: subject walks in place, but we need to generate
@@ -223,7 +311,7 @@ def compute_root_translation(f, trial_path, fps_in, fps_out):
     # The upright rotation applied later will convert Y-up → Z-up.
     trans = np.zeros((T, 3))
     trans[:, 2] = forward_disp              # +Z = forward (character faces +Z in Y-up)
-    trans[:, 0] = -(com_ml - com_ml[0])     # X = right (negate medio-lateral)
+    trans[:, 0] = -(com_ml - com_ml[0]) * pelvis_lat_scale   # X = right (negate medio-lateral); scale dampens lateral sway
     trans[:, 1] = com_vert                  # Y = up (height, absolute ~0.9-1.0m)
 
     # Resample to output fps
@@ -238,7 +326,7 @@ def compute_root_translation(f, trial_path, fps_in, fps_out):
     return trans
 
 
-def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3axis=False, upper_body=False):
+def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3axis=False, upper_body=False, elbow_offset_deg=0.0, pelvis_obliq_scale=1.0, pelvis_lat_scale=1.0, stance_anchor_ip=False):
     """Convert a single H5 trial to PHC motion library format.
 
     Returns:
@@ -309,6 +397,9 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3
             pelvis_tilt = subtract_baseline(pelvis_tilt, fps=fps_in, baseline_s=baseline_s)
             pelvis_obliq = subtract_baseline(pelvis_obliq, fps=fps_in, baseline_s=baseline_s)
             pelvis_rot = subtract_baseline(pelvis_rot, fps=fps_in, baseline_s=baseline_s)
+        # Scale pelvis obliquity (frontal roll) — 1.0 = unchanged, 0.0 = zero out
+        if pelvis_obliq_scale != 1.0:
+            pelvis_obliq = pelvis_obliq * pelvis_obliq_scale
     except KeyError:
         pass  # No pelvis data available, keep zeros (pure upright)
 
@@ -447,6 +538,8 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3
         (19, "right", +1.0),   # R_Elbow
     ]:
         vals = _read_side(f"{trial_path}/mocap/angle/{side}/elbow/x")
+        if elbow_offset_deg != 0.0:
+            vals = vals - elbow_offset_deg                              # reduce flexion magnitude (positive = less bent)
         for t in range(T):
             pose_aa_local[t, smpl_idx, 1] = sgn * np.deg2rad(vals[t])   # Ry
 
@@ -465,7 +558,7 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3
         T_out_final = T
 
     # Compute root translation
-    trans = compute_root_translation(f, trial_path, fps_in, fps_out)
+    trans = compute_root_translation(f, trial_path, fps_in, fps_out, pelvis_lat_scale=pelvis_lat_scale)
     # Ensure same length
     min_len = min(len(trans), len(pose_aa_local))
     trans = trans[:min_len]
@@ -602,6 +695,16 @@ def main():
                         help="Map all three PiG spine/thorax axes (x,y,z) to SMPL instead of sagittal only.")
     parser.add_argument("--upper_body", action="store_true",
                         help="Map PiG neck→SMPL joint 12 and head→SMPL joint 15 (instead of leaving them identity).")
+    parser.add_argument("--elbow_offset_deg", type=float, default=0.0,
+                        help="Subtract this many degrees from PiG elbow flexion (positive value = less bent). Experimental.")
+    parser.add_argument("--pelvis_obliq_scale", type=float, default=1.0,
+                        help="Scale pelvis obliquity (frontal roll). 1.0=unchanged, 0.0=zero out, 0.5=halve. Experimental.")
+    parser.add_argument("--pelvis_lat_scale", type=float, default=1.0,
+                        help="Scale root lateral translation (CoM medio-lateral). 1.0=unchanged, 0.0=straight forward. Experimental.")
+    parser.add_argument("--stance_anchor_ip", action="store_true",
+                        help="Anchor pelvis world position to stance feet via IP "
+                             "(replaces lateral+vertical in trans; keeps treadmill forward). "
+                             "See design doc 01_research_docs/260424_h5_stance_anchor_ip_design.md.")
     args = parser.parse_args()
 
     f = h5py.File(args.h5, "r")
@@ -644,7 +747,7 @@ def main():
                     trial_path = f"{subj}/{task}/{level}/{trial}"
                     print(f"Processing: {trial_path}")
 
-                    result = convert_trial(f, trial_path, fps_in, args.fps_out, baseline_s=args.baseline_s, spine_3axis=args.spine_3axis, upper_body=args.upper_body)
+                    result = convert_trial(f, trial_path, fps_in, args.fps_out, baseline_s=args.baseline_s, spine_3axis=args.spine_3axis, upper_body=args.upper_body, elbow_offset_deg=args.elbow_offset_deg, pelvis_obliq_scale=args.pelvis_obliq_scale, pelvis_lat_scale=args.pelvis_lat_scale, stance_anchor_ip=args.stance_anchor_ip)
                     if result is None:
                         skipped += 1
                         continue
