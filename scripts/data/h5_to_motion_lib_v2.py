@@ -327,7 +327,27 @@ def compute_root_translation(f, trial_path, fps_in, fps_out, pelvis_lat_scale=1.
     return trans
 
 
-def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3axis=False, upper_body=False, elbow_offset_deg=0.0, pelvis_obliq_scale=1.0, pelvis_lat_scale=1.0, stance_anchor_ip=False):
+def read_cop(f, trial_path, side):
+    """Read CoP medio-lateral (x) in meters, at input fps. Returns None if missing.
+
+    Forceplate CoP is in PiG lab frame: x=medio-lateral, y=anterior-posterior, z=vertical.
+    Valid only during stance (when GRF > threshold); outside stance the values are garbage
+    (huge range from unloaded plate electronics). Caller must mask by stance.
+    """
+    path = f"{trial_path}/forceplate/cop/{side}/x"
+    try:
+        v = np.array(f[path], dtype=np.float64) / 1000.0  # mm → m
+        nn = np.isnan(v)
+        if nn.any() and not nn.all():
+            v[nn] = np.interp(np.flatnonzero(nn), np.flatnonzero(~nn), v[~nn])
+        elif nn.all():
+            return None
+        return v
+    except KeyError:
+        return None
+
+
+def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3axis=False, upper_body=False, elbow_offset_deg=0.0, pelvis_obliq_scale=1.0, pelvis_lat_scale=1.0, stance_anchor_ip=False, stance_anchor_source="fk"):
     """Convert a single H5 trial to PHC motion library format.
 
     Returns:
@@ -644,6 +664,35 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3
             stance_R = _schmitt(grf_R, 50.0, 20.0, on_when_above=True)
         else:
             stance_L, stance_R = detect_stance(grf_L, grf_R, vel_L, vel_R)
+        # Optionally replace FK-derived foot lateral with CoP (independent measurement).
+        # This breaks the circular dependency where foot_L_w comes from FK(pelvis_from_CoM)
+        # and the IP then tries to correct the same pelvis — which collapses to near no-op.
+        # CoP is the true stance-foot lateral position in lab frame (std ~2cm during stance).
+        if stance_anchor_source == "cop":
+            from h5_conversion_helpers import cop_replace_lateral
+            cop_L_raw = read_cop(f, trial_path, side='left')
+            cop_R_raw = read_cop(f, trial_path, side='right')
+            if cop_L_raw is None or cop_R_raw is None:
+                print("  [stance_anchor_ip] stance_anchor_source=cop requested but no CoP data — falling back to FK")
+            else:
+                def _resample_cop(arr, f_in, f_out, n_out):
+                    if len(arr) == n_out:
+                        return arr
+                    t_in = np.arange(len(arr)) / f_in
+                    t_out = np.arange(n_out) / f_out
+                    return np.interp(t_out, t_in, arr)
+                cop_L_m = _resample_cop(cop_L_raw, fps_in, fps_out, _T)
+                cop_R_m = _resample_cop(cop_R_raw, fps_in, fps_out, _T)
+                # Replace the lateral axis of FK foot positions with CoP (Z-up lateral = index 1).
+                foot_L_anchor_in, foot_R_anchor_in = cop_replace_lateral(
+                    foot_L_w, foot_R_w, stance_L, stance_R,
+                    cop_L_m, cop_R_m, fk_lat_axis=1,
+                )
+                print(f"  [stance_anchor_ip] using CoP for lateral anchor "
+                      f"(L stance mean: FK={foot_L_w[stance_L,1].mean():.3f} → "
+                      f"CoP-based={foot_L_anchor_in[stance_L,1].mean():.3f})")
+                foot_L_w = foot_L_anchor_in
+                foot_R_w = foot_R_anchor_in
         # Foot anchor (rolling mean per stance episode, in Z-up)
         anchor_L = compute_foot_anchor(foot_L_w, stance_L, window=9)
         anchor_R = compute_foot_anchor(foot_R_w, stance_R, window=9)
@@ -829,6 +878,10 @@ def main():
                         help="Anchor pelvis world position to stance feet via IP "
                              "(replaces lateral+vertical in trans; keeps treadmill forward). "
                              "See design doc 01_research_docs/260424_h5_stance_anchor_ip_design.md.")
+    parser.add_argument("--stance_anchor_source", type=str, default="fk",
+                        choices=["fk", "cop"],
+                        help="IP anchor source. 'fk' = FK-derived foot (circular, near no-op). "
+                             "'cop' = Forceplate CoP for lateral, FK for fwd/vert (breaks circularity).")
     args = parser.parse_args()
 
     f = h5py.File(args.h5, "r")
@@ -871,7 +924,7 @@ def main():
                     trial_path = f"{subj}/{task}/{level}/{trial}"
                     print(f"Processing: {trial_path}")
 
-                    result = convert_trial(f, trial_path, fps_in, args.fps_out, baseline_s=args.baseline_s, spine_3axis=args.spine_3axis, upper_body=args.upper_body, elbow_offset_deg=args.elbow_offset_deg, pelvis_obliq_scale=args.pelvis_obliq_scale, pelvis_lat_scale=args.pelvis_lat_scale, stance_anchor_ip=args.stance_anchor_ip)
+                    result = convert_trial(f, trial_path, fps_in, args.fps_out, baseline_s=args.baseline_s, spine_3axis=args.spine_3axis, upper_body=args.upper_body, elbow_offset_deg=args.elbow_offset_deg, pelvis_obliq_scale=args.pelvis_obliq_scale, pelvis_lat_scale=args.pelvis_lat_scale, stance_anchor_ip=args.stance_anchor_ip, stance_anchor_source=args.stance_anchor_source)
                     if result is None:
                         skipped += 1
                         continue

@@ -144,6 +144,61 @@ def compute_foot_anchor(foot_world, stance_mask, window=9):
     return anchor
 
 
+def cop_replace_lateral(fk_foot_L, fk_foot_R, stance_L, stance_R,
+                        cop_L_lat_m, cop_R_lat_m, fk_lat_axis=1):
+    """Replace the lateral component of FK foot anchors with CoP (independent measurement).
+
+    Forceplate CoP gives the true stance-foot lateral position in lab frame, independent
+    of the CoM-based pelvis translation. Using it as the IP anchor breaks the circular
+    dependency where FK foot positions derive from the same pelvis the IP is trying to
+    correct.
+
+    During stance frames: anchor[lat] = CoP lateral + centering offset.
+    During swing frames: anchor[lat] = FK foot lateral (unchanged).
+
+    Sign alignment is auto-detected: if FK (L-stance mean lateral) vs (R-stance mean)
+    has opposite sign from CoP (L-stance mean) vs (R-stance mean), CoP is negated.
+
+    Args:
+        fk_foot_L, fk_foot_R: [T, 3] FK-derived foot world positions (Z-up).
+        stance_L, stance_R: [T] bool stance masks.
+        cop_L_lat_m, cop_R_lat_m: [T] CoP medio-lateral (lab frame x), in meters.
+            NaN/invalid values outside stance are tolerated (those frames unused).
+        fk_lat_axis: axis index for lateral in Z-up (default 1 = Y).
+
+    Returns:
+        anchor_L, anchor_R: [T, 3], FK foot with lateral axis replaced.
+    """
+    anchor_L = fk_foot_L.copy()
+    anchor_R = fk_foot_R.copy()
+
+    if stance_L.sum() < 3 or stance_R.sum() < 3:
+        # Not enough stance frames to align — fall back to FK.
+        return anchor_L, anchor_R
+
+    fk_L_mean = float(np.nanmean(fk_foot_L[stance_L, fk_lat_axis]))
+    fk_R_mean = float(np.nanmean(fk_foot_R[stance_R, fk_lat_axis]))
+    cop_L_mean = float(np.nanmean(cop_L_lat_m[stance_L]))
+    cop_R_mean = float(np.nanmean(cop_R_lat_m[stance_R]))
+
+    fk_diff = fk_L_mean - fk_R_mean
+    cop_diff = cop_L_mean - cop_R_mean
+    sign = 1.0 if fk_diff * cop_diff > 0 else -1.0
+
+    cop_L_aligned = sign * cop_L_lat_m
+    cop_R_aligned = sign * cop_R_lat_m
+    cop_L_mean_s = sign * cop_L_mean
+    cop_R_mean_s = sign * cop_R_mean
+
+    # Centering offset: align CoP mean with FK mean, per foot (preserves base-of-support width)
+    offset_L = fk_L_mean - cop_L_mean_s
+    offset_R = fk_R_mean - cop_R_mean_s
+
+    anchor_L[stance_L, fk_lat_axis] = cop_L_aligned[stance_L] + offset_L
+    anchor_R[stance_R, fk_lat_axis] = cop_R_aligned[stance_R] + offset_R
+    return anchor_L, anchor_R
+
+
 def solve_pelvis_ip(anchor_L, anchor_R, grf_L, grf_R,
                     R_pelvis, foot_offset_L, foot_offset_R, eps=1e-3):
     """Solve pelvis world position from stance-foot anchor constraint (IP).
