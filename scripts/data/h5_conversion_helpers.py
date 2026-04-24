@@ -89,7 +89,59 @@ def compute_foot_anchor(foot_world, stance_mask, window=9):
     Returns:
         anchor_world: [T, 3] smoothed anchor.
     """
-    raise NotImplementedError
+    T = foot_world.shape[0]
+    anchor = np.zeros_like(foot_world)
+    if T == 0:
+        return anchor
+    half = window // 2
+
+    # Find contiguous stance episodes: list of (start, end_inclusive) index pairs
+    episodes = []
+    in_ep = False
+    s = -1
+    for t in range(T):
+        if stance_mask[t] and not in_ep:
+            s = t
+            in_ep = True
+        elif not stance_mask[t] and in_ep:
+            episodes.append((s, t - 1))
+            in_ep = False
+    if in_ep:
+        episodes.append((s, T - 1))
+
+    # Apply rolling mean within each episode (edges truncated — use available samples)
+    for (a, b) in episodes:
+        for t in range(a, b + 1):
+            lo = max(a, t - half)
+            hi = min(b, t + half) + 1   # exclusive upper
+            anchor[t] = foot_world[lo:hi].mean(axis=0)
+
+    # Fill swing frames by linear interpolation between adjacent episodes
+    # (continuity; solver masks swing via GRF weights, but this helps for callers
+    # that inspect anchor directly).
+    if episodes:
+        # Before first stance: hold first episode's initial anchor
+        first_a, _ = episodes[0]
+        if first_a > 0:
+            anchor[:first_a] = anchor[first_a]
+        # Between episodes: linear interp
+        for i in range(len(episodes) - 1):
+            _, b_i = episodes[i]
+            a_next, _ = episodes[i + 1]
+            if a_next > b_i + 1:
+                a0 = anchor[b_i]
+                a1 = anchor[a_next]
+                for t in range(b_i + 1, a_next):
+                    alpha = (t - b_i) / (a_next - b_i)
+                    anchor[t] = (1 - alpha) * a0 + alpha * a1
+        # After last stance: hold last episode's final anchor
+        _, last_b = episodes[-1]
+        if last_b < T - 1:
+            anchor[last_b + 1:] = anchor[last_b]
+    else:
+        # No stance at all: return zeros (caller must handle)
+        pass
+    return anchor
 
 
 def solve_pelvis_ip(anchor_L, anchor_R, grf_L, grf_R,
