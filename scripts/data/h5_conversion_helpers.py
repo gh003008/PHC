@@ -28,6 +28,27 @@ def subtract_baseline(signal: np.ndarray, fps: int, baseline_s: float) -> np.nda
     return signal - base
 
 
+def _schmitt(signal, on_threshold, off_threshold, on_when_above=True):
+    """Generic Schmitt trigger. Returns bool array same shape as signal."""
+    T = len(signal)
+    out = np.zeros(T, dtype=bool)
+    state = False
+    for t in range(T):
+        v = signal[t]
+        if on_when_above:
+            if not state and v > on_threshold:
+                state = True
+            elif state and v < off_threshold:
+                state = False
+        else:
+            if not state and v < on_threshold:
+                state = True
+            elif state and v > off_threshold:
+                state = False
+        out[t] = state
+    return out
+
+
 def detect_stance(grf_L, grf_R, vel_L, vel_R,
                   grf_on=50.0, grf_off=20.0,
                   vel_on=0.3, vel_off=0.5):
@@ -44,7 +65,13 @@ def detect_stance(grf_L, grf_R, vel_L, vel_R,
     Returns:
         stance_L, stance_R: 1-D bool arrays [T]. True when foot is in stance.
     """
-    raise NotImplementedError
+    grf_stance_L = _schmitt(grf_L, grf_on, grf_off, on_when_above=True)
+    grf_stance_R = _schmitt(grf_R, grf_on, grf_off, on_when_above=True)
+    vel_stance_L = _schmitt(vel_L, vel_on, vel_off, on_when_above=False)
+    vel_stance_R = _schmitt(vel_R, vel_on, vel_off, on_when_above=False)
+    stance_L = grf_stance_L | vel_stance_L
+    stance_R = grf_stance_R | vel_stance_R
+    return stance_L, stance_R
 
 
 def compute_foot_anchor(foot_world, stance_mask, window=9):
