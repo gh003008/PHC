@@ -243,7 +243,7 @@ def classify_sub_phases(grf_L, grf_R, ankle_L, toe_L, ankle_R, toe_R,
 
 
 def build_foot_anchors(cop_L_xy, cop_R_xy, ankle_L, toe_L, ankle_R, toe_R,
-                      phase_L, phase_R, fps, min_episode_frames=10):
+                      phase_L, phase_R, min_episode_frames=10):
     """Per-stance-episode heel/toe anchors from sub-phase-averaged CoP.
 
     Anchor = (lateral from CoP mean over sub-phase frames,
@@ -256,7 +256,6 @@ def build_foot_anchors(cop_L_xy, cop_R_xy, ankle_L, toe_L, ankle_R, toe_R,
             and anterior-posterior (lab y, but UNUSED — forward comes from FK).
         ankle_L, toe_L, ankle_R, toe_R: [T, 3] world positions (Z-up).
         phase_L, phase_R: [T] sub-phase labels from classify_sub_phases.
-        fps: sampling rate (used only for short-episode skip).
         min_episode_frames: stance episodes shorter than this are skipped (ik_active=False).
 
     Returns:

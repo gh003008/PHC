@@ -167,7 +167,7 @@ def test_build_foot_anchors_synthetic():
 
     anchors = build_foot_anchors(
         cop_L_xy, cop_R_xy, ankle_L, toe_L, ankle_R, toe_R,
-        phase_L, phase_R, fps=30, min_episode_frames=10,
+        phase_L, phase_R, min_episode_frames=10,
     )
     H_L = anchors["H_L"]
     T_L = anchors["T_L"]
