@@ -382,7 +382,7 @@ def solve_foot_ik_frame(pose_measured, trans_measured, R_pelvis_world,
                         anchors_t, phase_t,
                         offsets_L, offsets_R,
                         weights, bounds_deg, max_nfev,
-                        pose_prev=None):
+                        pose_prev=None, trans_prev=None):
     """Single-frame IK solve.
 
     Decision variables (packed into a flat vector x):
@@ -476,9 +476,12 @@ def solve_foot_ik_frame(pose_measured, trans_measured, R_pelvis_world,
         res.append(sw_j * (r_hip - pose_measured[R_HIP]))
         res.append(sw_j * (r_knee - pose_measured[R_KNEE]))
         res.append(sw_j * (r_ank - pose_measured[R_ANKLE]))
-        # Pelvis trans regularizer
+        # Pelvis trans regularizer (deviation from measured CoM-derived trans)
         res.append(sw_p * (ptr - trans_measured))
-        # Smoothness (if pose_prev available)
+        # Frame-to-frame smoothness on joint angles AND pelvis trans (if previous given).
+        # Pelvis trans smoothness is critical at swing→stance boundaries — without it,
+        # IK can teleport pelvis tens of cm in a single frame to satisfy a freshly-
+        # activated anchor.
         if pose_prev is not None and sw_s > 0.0:
             res.append(sw_s * (l_hip - prev_LHIP))
             res.append(sw_s * (l_knee - prev_LKNEE))
@@ -486,6 +489,8 @@ def solve_foot_ik_frame(pose_measured, trans_measured, R_pelvis_world,
             res.append(sw_s * (r_hip - prev_RHIP))
             res.append(sw_s * (r_knee - prev_RKNEE))
             res.append(sw_s * (r_ank - prev_RANK))
+        if trans_prev is not None and sw_s > 0.0:
+            res.append(sw_s * (ptr - trans_prev))
         return np.concatenate(res)
 
     try:
@@ -546,3 +551,209 @@ def solve_pelvis_ip(anchor_L, anchor_R, grf_L, grf_R,
     pelvis = target_anchor - rotated_offset
     pelvis[~valid] = np.nan
     return pelvis
+
+
+def _aa_to_matrix_torch(aa):
+    """Axis-angle (..., 3) → rotation matrix (..., 3, 3) via Rodrigues. Differentiable.
+
+    Handles the small-angle case via Taylor expansion to avoid 0/0 gradient at θ=0.
+    """
+    import torch
+    theta = torch.linalg.norm(aa, dim=-1, keepdim=True).clamp(min=1e-12)        # (..., 1)
+    k = aa / theta                                                              # (..., 3) unit axis
+    K = torch.zeros(*aa.shape[:-1], 3, 3, dtype=aa.dtype, device=aa.device)
+    K[..., 0, 1] = -k[..., 2]; K[..., 0, 2] =  k[..., 1]
+    K[..., 1, 0] =  k[..., 2]; K[..., 1, 2] = -k[..., 0]
+    K[..., 2, 0] = -k[..., 1]; K[..., 2, 1] =  k[..., 0]
+    eye = torch.eye(3, dtype=aa.dtype, device=aa.device).expand(*aa.shape[:-1], 3, 3)
+    s = torch.sin(theta).unsqueeze(-1)                                          # (..., 1, 1)
+    c = (1.0 - torch.cos(theta)).unsqueeze(-1)
+    return eye + s * K + c * (K @ K)
+
+
+def _fk_leg_world_xyz_torch(pelvis_trans, R_pelvis_world,
+                             hip_aa, knee_aa, ankle_aa, leg_local_offsets):
+    """Vectorized PyTorch FK for one leg over a trajectory. Differentiable.
+
+    Args (all torch tensors, dtype float32 or float64):
+        pelvis_trans: (T, 3) pelvis world position.
+        R_pelvis_world: (T, 3, 3) pelvis world rotation matrix.
+        hip_aa, knee_aa, ankle_aa: (T, 3) axis-angle joint rotations.
+        leg_local_offsets: dict with 'hip', 'knee', 'ankle', 'toe' (each (3,) torch tensor).
+
+    Returns:
+        ankle_world: (T, 3)
+        toe_world:   (T, 3)
+    """
+    import torch
+    R_hip = _aa_to_matrix_torch(hip_aa)                                          # (T, 3, 3)
+    R_knee = _aa_to_matrix_torch(knee_aa)
+    R_ankle = _aa_to_matrix_torch(ankle_aa)
+
+    def _apply(R, v):
+        # R: (T, 3, 3), v: (3,) → (T, 3)
+        return torch.einsum('tij,j->ti', R, v)
+
+    hip_world = pelvis_trans + _apply(R_pelvis_world, leg_local_offsets["hip"])
+    R_hip_w = R_pelvis_world @ R_hip
+    knee_world = hip_world + _apply(R_hip_w, leg_local_offsets["knee"])
+    R_knee_w = R_hip_w @ R_knee
+    ankle_world = knee_world + _apply(R_knee_w, leg_local_offsets["ankle"])
+    R_ankle_w = R_knee_w @ R_ankle
+    toe_world = ankle_world + _apply(R_ankle_w, leg_local_offsets["toe"])
+    return ankle_world, toe_world
+
+
+def solve_foot_ik_trajectory(pose_measured, trans_measured, R_pelvis_world,
+                              anchors, phase_L, phase_R,
+                              offsets_L, offsets_R,
+                              weights, bounds_deg, lr, max_iter, tol=1e-4,
+                              device="cpu", verbose=False):
+    """Trajectory-wide foot-anchor IK via PyTorch Adam.
+
+    Optimizes pelvis_trans + L/R hip/knee/ankle joint angles over the FULL
+    trajectory simultaneously. Cross-frame smoothness in the cost prevents the
+    discrete swing→stance jumps that plague per-frame IK.
+
+    Args:
+        pose_measured: (T, 24, 3) BONE order axis-angle (numpy).
+        trans_measured: (T, 3) pelvis world trans in Z-up (numpy).
+        R_pelvis_world: (T, 3, 3) pelvis world rotation matrix in Z-up (numpy).
+        anchors: dict with H_L, T_L, H_R, T_R (each (T, 3) np world position; NaN where inactive).
+        phase_L, phase_R: (T,) int8 — 0=swing, 1=heel-only, 2=full-contact, 3=toe-only.
+        offsets_L, offsets_R: from _extract_leg_local_offsets (np dicts; converted to torch internally).
+        weights: dict with 'anchor', 'smooth', 'joint_reg', 'pelvis_reg', 'bound' float weights.
+        bounds_deg: float — soft bound radius in degrees.
+        lr: Adam learning rate.
+        max_iter: max optimizer iterations.
+        tol: early-stop loss-change tolerance.
+        device: 'cpu' or 'cuda'.
+        verbose: print loss every 50 iters.
+
+    Returns:
+        pose_corrected: (T, 24, 3) numpy — only L/R hip/knee/ankle modified.
+        trans_corrected: (T, 3) numpy.
+        info: dict with 'final_loss', 'iters', 'converged'.
+    """
+    import torch
+    T = pose_measured.shape[0]
+    L_HIP, L_KNEE, L_ANKLE = 1, 4, 7
+    R_HIP, R_KNEE, R_ANKLE = 2, 5, 8
+
+    dtype = torch.float32
+    dev = torch.device(device)
+
+    # Convert inputs to torch
+    trans_m = torch.tensor(trans_measured, dtype=dtype, device=dev)
+    R_pel = torch.tensor(R_pelvis_world, dtype=dtype, device=dev)
+    pose_m = torch.tensor(pose_measured, dtype=dtype, device=dev)
+    off_L = {k: torch.tensor(v, dtype=dtype, device=dev) for k, v in offsets_L.items()}
+    off_R = {k: torch.tensor(v, dtype=dtype, device=dev) for k, v in offsets_R.items()}
+
+    # Anchor masks per sub-phase
+    pL = torch.tensor(phase_L.astype(np.int64), dtype=torch.long, device=dev)
+    pR = torch.tensor(phase_R.astype(np.int64), dtype=torch.long, device=dev)
+    mask_L_ankle = ((pL == 1) | (pL == 2)).float()        # (T,) — anchor heel/ankle active
+    mask_L_toe   = ((pL == 2) | (pL == 3)).float()
+    mask_R_ankle = ((pR == 1) | (pR == 2)).float()
+    mask_R_toe   = ((pR == 2) | (pR == 3)).float()
+
+    # Anchor positions (NaN-replaced with zero for safety; mask zeros out invalid)
+    def _safe(arr):
+        a = np.where(np.isfinite(arr), arr, 0.0)
+        return torch.tensor(a, dtype=dtype, device=dev)
+    H_L = _safe(anchors["H_L"]); T_L_anc = _safe(anchors["T_L"])
+    H_R = _safe(anchors["H_R"]); T_R_anc = _safe(anchors["T_R"])
+
+    # Decision variables (warm-start from measured)
+    trans_var = trans_m.clone().requires_grad_(True)
+    pose_var = torch.stack([
+        pose_m[:, L_HIP],  pose_m[:, L_KNEE],  pose_m[:, L_ANKLE],
+        pose_m[:, R_HIP],  pose_m[:, R_KNEE],  pose_m[:, R_ANKLE],
+    ], dim=1).clone().requires_grad_(True)                 # (T, 6, 3)
+
+    # Measured pose-leg snapshot for regularizer
+    pose_m_legs = torch.stack([
+        pose_m[:, L_HIP],  pose_m[:, L_KNEE],  pose_m[:, L_ANKLE],
+        pose_m[:, R_HIP],  pose_m[:, R_KNEE],  pose_m[:, R_ANKLE],
+    ], dim=1)
+
+    bound_rad = float(np.radians(bounds_deg))
+    w_anchor = float(weights["anchor"])
+    w_smooth = float(weights["smooth"])
+    w_jreg   = float(weights["joint_reg"])
+    w_preg   = float(weights["pelvis_reg"])
+    w_bound  = float(weights["bound"])
+
+    optimizer = torch.optim.Adam([trans_var, pose_var], lr=lr)
+
+    prev_loss = None
+    converged = False
+    iters_done = 0
+
+    for it in range(max_iter):
+        optimizer.zero_grad()
+
+        # FK
+        l_hip, l_knee, l_ank = pose_var[:, 0], pose_var[:, 1], pose_var[:, 2]
+        r_hip, r_knee, r_ank = pose_var[:, 3], pose_var[:, 4], pose_var[:, 5]
+        ankle_L_w, toe_L_w = _fk_leg_world_xyz_torch(trans_var, R_pel, l_hip, l_knee, l_ank, off_L)
+        ankle_R_w, toe_R_w = _fk_leg_world_xyz_torch(trans_var, R_pel, r_hip, r_knee, r_ank, off_R)
+
+        # Anchor losses (mean of squared error, masked by sub-phase activation)
+        def _anchor_loss(pred, target, mask):
+            err2 = ((pred - target) ** 2).sum(dim=-1)              # (T,)
+            return (mask * err2).sum() / (mask.sum().clamp(min=1.0))
+
+        L_anchor = (_anchor_loss(ankle_L_w, H_L, mask_L_ankle)
+                    + _anchor_loss(toe_L_w, T_L_anc, mask_L_toe)
+                    + _anchor_loss(ankle_R_w, H_R, mask_R_ankle)
+                    + _anchor_loss(toe_R_w, T_R_anc, mask_R_toe))
+
+        # Smoothness across consecutive frames
+        L_smooth_pose = ((pose_var[1:] - pose_var[:-1]) ** 2).mean()
+        L_smooth_trans = ((trans_var[1:] - trans_var[:-1]) ** 2).mean()
+        L_smooth = L_smooth_pose + L_smooth_trans
+
+        # Regularizers (deviation from measured)
+        L_jreg = ((pose_var - pose_m_legs) ** 2).mean()
+        L_preg = ((trans_var - trans_m) ** 2).mean()
+
+        # Soft bounds on joint angles (only joints — trans unbounded)
+        excess = (pose_var - pose_m_legs).abs() - bound_rad
+        L_bound = (excess.clamp(min=0.0) ** 2).mean()
+
+        loss = (w_anchor * L_anchor
+                + w_smooth * L_smooth
+                + w_jreg   * L_jreg
+                + w_preg   * L_preg
+                + w_bound  * L_bound)
+
+        loss.backward()
+        optimizer.step()
+
+        if verbose and (it % 50 == 0 or it == max_iter - 1):
+            print(f"    iter {it:4d}  loss={loss.item():.6f}  "
+                  f"anchor={L_anchor.item():.4f}  smooth={L_smooth.item():.6f}  "
+                  f"jreg={L_jreg.item():.4f}  preg={L_preg.item():.4f}  bound={L_bound.item():.6f}")
+
+        iters_done = it + 1
+        if prev_loss is not None and abs(prev_loss - loss.item()) < tol:
+            converged = True
+            break
+        prev_loss = loss.item()
+
+    # Write back to pose_corrected (BONE order)
+    pose_corrected = pose_measured.copy()
+    pose_var_np = pose_var.detach().cpu().numpy()
+    pose_corrected[:, L_HIP]   = pose_var_np[:, 0]
+    pose_corrected[:, L_KNEE]  = pose_var_np[:, 1]
+    pose_corrected[:, L_ANKLE] = pose_var_np[:, 2]
+    pose_corrected[:, R_HIP]   = pose_var_np[:, 3]
+    pose_corrected[:, R_KNEE]  = pose_var_np[:, 4]
+    pose_corrected[:, R_ANKLE] = pose_var_np[:, 5]
+    trans_corrected = trans_var.detach().cpu().numpy()
+
+    info = {"final_loss": float(prev_loss if prev_loss is not None else 0.0),
+            "iters": iters_done, "converged": converged}
+    return pose_corrected, trans_corrected, info

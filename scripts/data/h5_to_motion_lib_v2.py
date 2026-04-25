@@ -768,7 +768,7 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3
               f"stance_L={stance_L.mean()*100:.1f}%  stance_R={stance_R.mean()*100:.1f}%  "
               f"flight_frames={int(nan_mask.sum())}")
 
-    if foot_ik == "full":
+    if foot_ik in ("full", "trajectory"):
         from h5_conversion_helpers import (
             classify_sub_phases, build_foot_anchors, solve_foot_ik_frame,
             _extract_leg_local_offsets, _fk_leg_world_xyz,
@@ -875,45 +875,99 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3
                 for _k in ("H_L", "T_L", "H_R", "T_R"):
                     anchors[_k] = anchors[_k][:, _swap]
 
-                # Per-frame IK loop
-                weights = {
-                    "anchor": ik_anchor_w, "joint": ik_joint_w,
-                    "smooth": ik_smooth_w, "pelvis": ik_pelvis_w,
-                }
+                ik_active_either = anchors["ik_active_L"] | anchors["ik_active_R"]
                 trans_zup_corrected = trans_zup_ik.copy()
                 pose_aa_corrected = pose_aa_local.copy()
-                _converged_count = 0
-                _ik_frame_count = 0
-                _pose_prev = None
-                for t in range(_T):
-                    if not (anchors["ik_active_L"][t] or anchors["ik_active_R"][t]):
-                        _pose_prev = pose_aa_corrected[t]
-                        continue
-                    anchors_t = {
-                        "H_L": anchors["H_L"][t], "T_L": anchors["T_L"][t],
-                        "H_R": anchors["H_R"][t], "T_R": anchors["T_R"][t],
+
+                if foot_ik == "trajectory":
+                    from h5_conversion_helpers import solve_foot_ik_trajectory
+                    ik_lr = float(foot_ik_kwargs.get("lr", 0.01))
+                    ik_max_iter_traj = int(foot_ik_kwargs.get("max_iter", 500))
+                    ik_bound_w = float(foot_ik_kwargs.get("bound_weight", 100.0))
+                    weights_traj = {
+                        "anchor": ik_anchor_w,
+                        "smooth": ik_smooth_w,
+                        "joint_reg": ik_joint_w,
+                        "pelvis_reg": ik_pelvis_w,
+                        "bound": ik_bound_w,
                     }
-                    phase_t = {"L": int(phase_L[t]), "R": int(phase_R[t])}
-                    pose_corr, trans_corr, converged = solve_foot_ik_frame(
-                        pose_aa_corrected[t], trans_zup_corrected[t], _R_pel_world_zup[t],
-                        anchors_t, phase_t,
+                    print(f"  [foot_ik trajectory] starting Adam optimization "
+                          f"(T={_T}, lr={ik_lr}, max_iter={ik_max_iter_traj}, "
+                          f"weights={weights_traj}, bounds_deg={ik_bounds_deg})")
+                    pose_aa_corrected, trans_zup_corrected, info = solve_foot_ik_trajectory(
+                        pose_aa_local, trans_zup_ik, _R_pel_world_zup,
+                        anchors, phase_L, phase_R,
                         _offsets_L, _offsets_R,
-                        weights=weights, bounds_deg=ik_bounds_deg, max_nfev=ik_max_nfev,
-                        pose_prev=_pose_prev,
+                        weights=weights_traj, bounds_deg=ik_bounds_deg,
+                        lr=ik_lr, max_iter=ik_max_iter_traj,
+                        device="cpu", verbose=True,
                     )
-                    pose_aa_corrected[t] = pose_corr
-                    trans_zup_corrected[t] = trans_corr
-                    _ik_frame_count += 1
-                    if converged:
-                        _converged_count += 1
-                    _pose_prev = pose_corr
+                    print(f"  [foot_ik trajectory] done: iters={info['iters']}/{ik_max_iter_traj} "
+                          f"converged={info['converged']}  final_loss={info['final_loss']:.6f}")
+                else:
+                    # foot_ik == "full" — per-frame scipy LS (deprecated; discontinuous)
+                    # Build per-frame anchor weight ramp at stance edges to soften activation.
+                    _RAMP_FRAMES = 5
+                    anchor_w_per_frame = np.zeros(_T)
+                    _in = False; _s = 0
+                    for t in range(_T):
+                        if ik_active_either[t] and not _in:
+                            _s = t; _in = True
+                        elif not ik_active_either[t] and _in:
+                            _e = t
+                            for tt in range(_s, _e):
+                                edge = min(tt - _s, _e - 1 - tt)
+                                ramp = min(1.0, (edge + 1) / _RAMP_FRAMES)
+                                anchor_w_per_frame[tt] = ik_anchor_w * ramp
+                            _in = False
+                    if _in:
+                        _e = _T
+                        for tt in range(_s, _e):
+                            edge = min(tt - _s, _e - 1 - tt)
+                            ramp = min(1.0, (edge + 1) / _RAMP_FRAMES)
+                            anchor_w_per_frame[tt] = ik_anchor_w * ramp
+
+                    _converged_count = 0
+                    _ik_frame_count = 0
+                    _pose_prev = None
+                    _trans_prev = None
+                    for t in range(_T):
+                        if not ik_active_either[t]:
+                            _pose_prev = pose_aa_corrected[t]
+                            _trans_prev = trans_zup_corrected[t]
+                            continue
+                        anchors_t = {
+                            "H_L": anchors["H_L"][t], "T_L": anchors["T_L"][t],
+                            "H_R": anchors["H_R"][t], "T_R": anchors["T_R"][t],
+                        }
+                        phase_t = {"L": int(phase_L[t]), "R": int(phase_R[t])}
+                        weights = {
+                            "anchor": anchor_w_per_frame[t],
+                            "joint": ik_joint_w,
+                            "smooth": ik_smooth_w,
+                            "pelvis": ik_pelvis_w,
+                        }
+                        pose_corr, trans_corr, converged = solve_foot_ik_frame(
+                            pose_aa_corrected[t], trans_zup_corrected[t], _R_pel_world_zup[t],
+                            anchors_t, phase_t,
+                            _offsets_L, _offsets_R,
+                            weights=weights, bounds_deg=ik_bounds_deg, max_nfev=ik_max_nfev,
+                            pose_prev=_pose_prev, trans_prev=_trans_prev,
+                        )
+                        pose_aa_corrected[t] = pose_corr
+                        trans_zup_corrected[t] = trans_corr
+                        _ik_frame_count += 1
+                        if converged:
+                            _converged_count += 1
+                        _pose_prev = pose_corr
+                        _trans_prev = trans_corr
+                    _conv_pct = (100.0 * _converged_count / max(_ik_frame_count, 1))
+                    print(f"  [foot_ik full] done: ik_active_frames={_ik_frame_count}/{_T}  "
+                          f"converged={_converged_count} ({_conv_pct:.1f}%)")
 
                 # Write back: convert trans_zup_corrected back to Y-up
                 trans = _upright_ik_inv.apply(trans_zup_corrected)
                 pose_aa_local = pose_aa_corrected
-                _conv_pct = (100.0 * _converged_count / max(_ik_frame_count, 1))
-                print(f"  [foot_ik] done: ik_active_frames={_ik_frame_count}/{_T}  "
-                      f"converged={_converged_count} ({_conv_pct:.1f}%)")
 
     # ----- Build PHC-format motion using poselib (mirrors convert_amass_isaac.py) -----
     # 1. Local axis-angle (BONE order) → local quaternion xyzw (BONE order)
@@ -1059,11 +1113,18 @@ def main():
                         choices=["fk", "cop"],
                         help="IP anchor source. 'fk' = FK-derived foot (circular, near no-op). "
                              "'cop' = Forceplate CoP for lateral, FK for fwd/vert (breaks circularity).")
-    parser.add_argument("--foot_ik", type=str, default="none", choices=["none", "full"],
+    parser.add_argument("--foot_ik", type=str, default="none", choices=["none", "full", "trajectory"],
                         help="Full foot-anchor IK over pelvis_trans + stance leg joints. "
                              "'none' = disabled (default, backward-compat). "
-                             "'full' = scipy nonlinear LS per frame, anchor = sub-phase-averaged CoP. "
+                             "'full' = scipy nonlinear LS per frame (deprecated; discontinuous). "
+                             "'trajectory' = PyTorch Adam over full trajectory (smooth, recommended). "
                              "See 01_research_docs/260425_h5_foot_anchor_ik_design.md.")
+    parser.add_argument("--foot_ik_lr", type=float, default=0.01,
+                        help="[trajectory] Adam learning rate.")
+    parser.add_argument("--foot_ik_max_iter", type=int, default=500,
+                        help="[trajectory] Max Adam iterations.")
+    parser.add_argument("--foot_ik_bound_weight", type=float, default=100.0,
+                        help="[trajectory] Soft bound penalty weight (joint angle outside ± bounds_deg).")
     parser.add_argument("--foot_ik_pitch_threshold_deg", type=float, default=5.0,
                         help="Foot pitch threshold (degrees) for sub-phase classification.")
     parser.add_argument("--foot_ik_anchor_weight", type=float, default=1e3,
@@ -1120,7 +1181,7 @@ def main():
                     trial_path = f"{subj}/{task}/{level}/{trial}"
                     print(f"Processing: {trial_path}")
 
-                    result = convert_trial(f, trial_path, fps_in, args.fps_out, baseline_s=args.baseline_s, spine_3axis=args.spine_3axis, upper_body=args.upper_body, elbow_offset_deg=args.elbow_offset_deg, pelvis_obliq_scale=args.pelvis_obliq_scale, pelvis_lat_scale=args.pelvis_lat_scale, stance_anchor_ip=args.stance_anchor_ip, stance_anchor_source=args.stance_anchor_source, foot_ik=args.foot_ik, foot_ik_kwargs={"pitch_threshold_deg": args.foot_ik_pitch_threshold_deg, "anchor_weight": args.foot_ik_anchor_weight, "joint_reg_weight": args.foot_ik_joint_reg_weight, "smoothness_weight": args.foot_ik_smoothness_weight, "pelvis_reg_weight": args.foot_ik_pelvis_reg_weight, "max_nfev": args.foot_ik_max_nfev, "bounds_deg": args.foot_ik_bounds_deg})
+                    result = convert_trial(f, trial_path, fps_in, args.fps_out, baseline_s=args.baseline_s, spine_3axis=args.spine_3axis, upper_body=args.upper_body, elbow_offset_deg=args.elbow_offset_deg, pelvis_obliq_scale=args.pelvis_obliq_scale, pelvis_lat_scale=args.pelvis_lat_scale, stance_anchor_ip=args.stance_anchor_ip, stance_anchor_source=args.stance_anchor_source, foot_ik=args.foot_ik, foot_ik_kwargs={"pitch_threshold_deg": args.foot_ik_pitch_threshold_deg, "anchor_weight": args.foot_ik_anchor_weight, "joint_reg_weight": args.foot_ik_joint_reg_weight, "smoothness_weight": args.foot_ik_smoothness_weight, "pelvis_reg_weight": args.foot_ik_pelvis_reg_weight, "max_nfev": args.foot_ik_max_nfev, "bounds_deg": args.foot_ik_bounds_deg, "lr": args.foot_ik_lr, "max_iter": args.foot_ik_max_iter, "bound_weight": args.foot_ik_bound_weight})
                     if result is None:
                         skipped += 1
                         continue
