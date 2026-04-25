@@ -347,7 +347,37 @@ def read_cop(f, trial_path, side):
         return None
 
 
-def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3axis=False, upper_body=False, elbow_offset_deg=0.0, pelvis_obliq_scale=1.0, pelvis_lat_scale=1.0, stance_anchor_ip=False, stance_anchor_source="fk"):
+def read_cop_xy(f, trial_path, side):
+    """Read CoP medio-lateral (x) AND anterior-posterior (y) in meters.
+
+    Returns (cop_xy, valid) where:
+      cop_xy: [T, 2] float64. Column 0 = lab x (medio-lateral), column 1 = lab y (AP).
+      valid: bool — False if H5 lacks CoP data.
+
+    NaN values are interpolated. Outside stance the CoP electronics return garbage —
+    caller must mask by stance.
+    """
+    paths = (
+        f"{trial_path}/forceplate/cop/{side}/x",
+        f"{trial_path}/forceplate/cop/{side}/y",
+    )
+    arrs = []
+    for path in paths:
+        try:
+            v = np.array(f[path], dtype=np.float64) / 1000.0   # mm → m
+            nn = np.isnan(v)
+            if nn.any() and not nn.all():
+                v[nn] = np.interp(np.flatnonzero(nn), np.flatnonzero(~nn), v[~nn])
+            elif nn.all():
+                return np.zeros((0, 2), dtype=np.float64), False
+            arrs.append(v)
+        except KeyError:
+            return np.zeros((0, 2), dtype=np.float64), False
+    cop_xy = np.column_stack(arrs)
+    return cop_xy, True
+
+
+def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3axis=False, upper_body=False, elbow_offset_deg=0.0, pelvis_obliq_scale=1.0, pelvis_lat_scale=1.0, stance_anchor_ip=False, stance_anchor_source="fk", foot_ik="none", foot_ik_kwargs=None):
     """Convert a single H5 trial to PHC motion library format.
 
     Returns:
@@ -738,6 +768,143 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3
               f"stance_L={stance_L.mean()*100:.1f}%  stance_R={stance_R.mean()*100:.1f}%  "
               f"flight_frames={int(nan_mask.sum())}")
 
+    if foot_ik == "full":
+        from h5_conversion_helpers import (
+            classify_sub_phases, build_foot_anchors, solve_foot_ik_frame,
+            _extract_leg_local_offsets, _fk_leg_world_xyz,
+        )
+        if foot_ik_kwargs is None:
+            foot_ik_kwargs = {}
+        ik_pitch_thr = float(foot_ik_kwargs.get("pitch_threshold_deg", 5.0))
+        ik_anchor_w = float(foot_ik_kwargs.get("anchor_weight", 1e3))
+        ik_joint_w = float(foot_ik_kwargs.get("joint_reg_weight", 0.1))
+        ik_smooth_w = float(foot_ik_kwargs.get("smoothness_weight", 0.5))
+        ik_pelvis_w = float(foot_ik_kwargs.get("pelvis_reg_weight", 0.01))
+        ik_max_nfev = int(foot_ik_kwargs.get("max_nfev", 300))
+        ik_bounds_deg = float(foot_ik_kwargs.get("bounds_deg", 20.0))
+
+        _T = T_out_final
+        _sk = get_skeleton_tree()
+        _offsets_L = _extract_leg_local_offsets(_sk, side='L')
+        _offsets_R = _extract_leg_local_offsets(_sk, side='R')
+        # Z-up frame for IK (consistent with FK pipeline). Convert trans + pelvis rotation.
+        _upright_ik = sRot.from_quat([0.5, 0.5, 0.5, 0.5])
+        _upright_ik_inv = _upright_ik.inv()
+        trans_zup_ik = _upright_ik.apply(trans)            # (T, 3) in Z-up
+        # Per-frame Z-up pelvis rotation matrix (apply upright on the right of measured global rotation).
+        # We have pelvis local axis-angle in pose_aa_local[:, 0] (BONE order). Convert to Z-up world R.
+        _R_pel_local = sRot.from_rotvec(pose_aa_local[:, 0])               # (T,)
+        _R_pel_world_zup = (_R_pel_local * _upright_ik_inv).as_matrix()    # (T, 3, 3)
+
+        # FK pass: ankle/toe world (Z-up) per frame, using current pose
+        ankle_L_zup = np.zeros((_T, 3))
+        toe_L_zup = np.zeros((_T, 3))
+        ankle_R_zup = np.zeros((_T, 3))
+        toe_R_zup = np.zeros((_T, 3))
+        for t in range(_T):
+            ankle_L_zup[t], toe_L_zup[t] = _fk_leg_world_xyz(
+                trans_zup_ik[t], _R_pel_world_zup[t],
+                pose_aa_local[t, 1], pose_aa_local[t, 4], pose_aa_local[t, 7], _offsets_L,
+            )
+            ankle_R_zup[t], toe_R_zup[t] = _fk_leg_world_xyz(
+                trans_zup_ik[t], _R_pel_world_zup[t],
+                pose_aa_local[t, 2], pose_aa_local[t, 5], pose_aa_local[t, 8], _offsets_R,
+            )
+
+        # Read GRF + CoP (re-resample to fps_out)
+        _grf_L_raw = read_grf(f, trial_path, side='left')
+        _grf_R_raw = read_grf(f, trial_path, side='right')
+        if _grf_L_raw is None or _grf_R_raw is None:
+            print("  [foot_ik] no GRF — IK requires forceplate data, skipping IK block.")
+        else:
+            def _resample(arr, f_in, f_out, n_out):
+                if len(arr) == n_out:
+                    return arr
+                t_in = np.arange(len(arr)) / f_in
+                t_out = np.arange(n_out) / f_out
+                return np.interp(t_out, t_in, arr)
+            _grf_L = _resample(_grf_L_raw, fps_in, fps_out, _T)
+            _grf_R = _resample(_grf_R_raw, fps_in, fps_out, _T)
+            _cop_L_xy_raw, _cop_L_ok = read_cop_xy(f, trial_path, side='left')
+            _cop_R_xy_raw, _cop_R_ok = read_cop_xy(f, trial_path, side='right')
+            if not (_cop_L_ok and _cop_R_ok):
+                print("  [foot_ik] no CoP — IK requires forceplate CoP data, skipping IK block.")
+            else:
+                _cop_L_xy = np.column_stack([
+                    _resample(_cop_L_xy_raw[:, 0], fps_in, fps_out, _T),
+                    _resample(_cop_L_xy_raw[:, 1], fps_in, fps_out, _T),
+                ])
+                _cop_R_xy = np.column_stack([
+                    _resample(_cop_R_xy_raw[:, 0], fps_in, fps_out, _T),
+                    _resample(_cop_R_xy_raw[:, 1], fps_in, fps_out, _T),
+                ])
+                # Sign-align CoP lateral with FK lateral (same logic as cop_replace_lateral)
+                # Use Y-axis (index 1) of Z-up frame as lateral.
+                _stance_L_mask = _grf_L > 50.0
+                _stance_R_mask = _grf_R > 50.0
+                if _stance_L_mask.sum() > 3 and _stance_R_mask.sum() > 3:
+                    _fk_L = ankle_L_zup[_stance_L_mask, 1].mean()
+                    _fk_R = ankle_R_zup[_stance_R_mask, 1].mean()
+                    _cop_L_mean = _cop_L_xy[_stance_L_mask, 0].mean()
+                    _cop_R_mean = _cop_R_xy[_stance_R_mask, 0].mean()
+                    _sign = 1.0 if (_fk_L - _fk_R) * (_cop_L_mean - _cop_R_mean) > 0 else -1.0
+                    _cop_L_xy[:, 0] = _sign * _cop_L_xy[:, 0] + (_fk_L - _sign * _cop_L_mean)
+                    _cop_R_xy[:, 0] = _sign * _cop_R_xy[:, 0] + (_fk_R - _sign * _cop_R_mean)
+
+                # Sub-phase classification
+                phase_L, phase_R = classify_sub_phases(
+                    _grf_L, _grf_R,
+                    ankle_L_zup, toe_L_zup, ankle_R_zup, toe_R_zup,
+                    pitch_threshold_deg=ik_pitch_thr,
+                )
+
+                # Anchors  (NOTE: build_foot_anchors no longer takes fps parameter)
+                anchors = build_foot_anchors(
+                    _cop_L_xy, _cop_R_xy,
+                    ankle_L_zup, toe_L_zup, ankle_R_zup, toe_R_zup,
+                    phase_L, phase_R, min_episode_frames=10,
+                )
+
+                # Per-frame IK loop
+                weights = {
+                    "anchor": ik_anchor_w, "joint": ik_joint_w,
+                    "smooth": ik_smooth_w, "pelvis": ik_pelvis_w,
+                }
+                trans_zup_corrected = trans_zup_ik.copy()
+                pose_aa_corrected = pose_aa_local.copy()
+                _converged_count = 0
+                _ik_frame_count = 0
+                _pose_prev = None
+                for t in range(_T):
+                    if not (anchors["ik_active_L"][t] or anchors["ik_active_R"][t]):
+                        _pose_prev = pose_aa_corrected[t]
+                        continue
+                    anchors_t = {
+                        "H_L": anchors["H_L"][t], "T_L": anchors["T_L"][t],
+                        "H_R": anchors["H_R"][t], "T_R": anchors["T_R"][t],
+                    }
+                    phase_t = {"L": int(phase_L[t]), "R": int(phase_R[t])}
+                    pose_corr, trans_corr, converged = solve_foot_ik_frame(
+                        pose_aa_corrected[t], trans_zup_corrected[t], _R_pel_world_zup[t],
+                        anchors_t, phase_t,
+                        _offsets_L, _offsets_R,
+                        weights=weights, bounds_deg=ik_bounds_deg, max_nfev=ik_max_nfev,
+                        pose_prev=_pose_prev,
+                    )
+                    pose_aa_corrected[t] = pose_corr
+                    trans_zup_corrected[t] = trans_corr
+                    _ik_frame_count += 1
+                    if converged:
+                        _converged_count += 1
+                    _pose_prev = pose_corr
+
+                # Write back: convert trans_zup_corrected back to Y-up
+                trans = _upright_ik_inv.apply(trans_zup_corrected)
+                pose_aa_local = pose_aa_corrected
+                _conv_pct = (100.0 * _converged_count / max(_ik_frame_count, 1))
+                print(f"  [foot_ik] done: ik_active_frames={_ik_frame_count}/{_T}  "
+                      f"converged={_converged_count} ({_conv_pct:.1f}%)")
+
     # ----- Build PHC-format motion using poselib (mirrors convert_amass_isaac.py) -----
     # 1. Local axis-angle (BONE order) → local quaternion xyzw (BONE order)
     pose_quat_bone_xyzw = sRot.from_rotvec(pose_aa_local.reshape(-1, 3)).as_quat().reshape(T_out_final, 24, 4)
@@ -882,6 +1049,25 @@ def main():
                         choices=["fk", "cop"],
                         help="IP anchor source. 'fk' = FK-derived foot (circular, near no-op). "
                              "'cop' = Forceplate CoP for lateral, FK for fwd/vert (breaks circularity).")
+    parser.add_argument("--foot_ik", type=str, default="none", choices=["none", "full"],
+                        help="Full foot-anchor IK over pelvis_trans + stance leg joints. "
+                             "'none' = disabled (default, backward-compat). "
+                             "'full' = scipy nonlinear LS per frame, anchor = sub-phase-averaged CoP. "
+                             "See 01_research_docs/260425_h5_foot_anchor_ik_design.md.")
+    parser.add_argument("--foot_ik_pitch_threshold_deg", type=float, default=5.0,
+                        help="Foot pitch threshold (degrees) for sub-phase classification.")
+    parser.add_argument("--foot_ik_anchor_weight", type=float, default=1e3,
+                        help="IK cost weight for anchor satisfaction (large = effectively hard).")
+    parser.add_argument("--foot_ik_joint_reg_weight", type=float, default=0.1,
+                        help="IK cost weight for joint angle deviation from measured.")
+    parser.add_argument("--foot_ik_smoothness_weight", type=float, default=0.5,
+                        help="IK cost weight for frame-to-frame joint angle smoothness.")
+    parser.add_argument("--foot_ik_pelvis_reg_weight", type=float, default=0.01,
+                        help="IK cost weight for pelvis trans deviation from measured.")
+    parser.add_argument("--foot_ik_max_nfev", type=int, default=300,
+                        help="Max scipy least_squares function evaluations per frame (≈ outer iter × 22 for 21-DoF finite-diff).")
+    parser.add_argument("--foot_ik_bounds_deg", type=float, default=20.0,
+                        help="Joint angle bounds: measured ± this (degrees).")
     args = parser.parse_args()
 
     f = h5py.File(args.h5, "r")
@@ -924,7 +1110,7 @@ def main():
                     trial_path = f"{subj}/{task}/{level}/{trial}"
                     print(f"Processing: {trial_path}")
 
-                    result = convert_trial(f, trial_path, fps_in, args.fps_out, baseline_s=args.baseline_s, spine_3axis=args.spine_3axis, upper_body=args.upper_body, elbow_offset_deg=args.elbow_offset_deg, pelvis_obliq_scale=args.pelvis_obliq_scale, pelvis_lat_scale=args.pelvis_lat_scale, stance_anchor_ip=args.stance_anchor_ip, stance_anchor_source=args.stance_anchor_source)
+                    result = convert_trial(f, trial_path, fps_in, args.fps_out, baseline_s=args.baseline_s, spine_3axis=args.spine_3axis, upper_body=args.upper_body, elbow_offset_deg=args.elbow_offset_deg, pelvis_obliq_scale=args.pelvis_obliq_scale, pelvis_lat_scale=args.pelvis_lat_scale, stance_anchor_ip=args.stance_anchor_ip, stance_anchor_source=args.stance_anchor_source, foot_ik=args.foot_ik, foot_ik_kwargs={"pitch_threshold_deg": args.foot_ik_pitch_threshold_deg, "anchor_weight": args.foot_ik_anchor_weight, "joint_reg_weight": args.foot_ik_joint_reg_weight, "smoothness_weight": args.foot_ik_smoothness_weight, "pelvis_reg_weight": args.foot_ik_pelvis_reg_weight, "max_nfev": args.foot_ik_max_nfev, "bounds_deg": args.foot_ik_bounds_deg})
                     if result is None:
                         skipped += 1
                         continue
