@@ -242,6 +242,84 @@ def classify_sub_phases(grf_L, grf_R, ankle_L, toe_L, ankle_R, toe_R,
     return _classify(stance_L, pitch_L), _classify(stance_R, pitch_R)
 
 
+def build_foot_anchors(cop_L_xy, cop_R_xy, ankle_L, toe_L, ankle_R, toe_R,
+                      phase_L, phase_R, fps, min_episode_frames=10):
+    """Per-stance-episode heel/toe anchors from sub-phase-averaged CoP.
+
+    Anchor = (lateral from CoP mean over sub-phase frames,
+              forward from FK foot mean over sub-phase frames,
+              vertical = 0 [ground]).
+    Per-frame arrays have anchor value during the stance episode, NaN elsewhere.
+
+    Args:
+        cop_L_xy, cop_R_xy: [T, 2] CoP medio-lateral (lab x → world lateral, sign-aligned)
+            and anterior-posterior (lab y, but UNUSED — forward comes from FK).
+        ankle_L, toe_L, ankle_R, toe_R: [T, 3] world positions (Z-up).
+        phase_L, phase_R: [T] sub-phase labels from classify_sub_phases.
+        fps: sampling rate (used only for short-episode skip).
+        min_episode_frames: stance episodes shorter than this are skipped (ik_active=False).
+
+    Returns:
+        dict with keys:
+          H_L, T_L, H_R, T_R: [T, 3] per-frame anchor (NaN outside stance/skipped).
+          ik_active_L, ik_active_R: [T] bool, True if IK should run on that frame.
+    """
+    T = len(phase_L)
+    out = {
+        "H_L": np.full((T, 3), np.nan), "T_L": np.full((T, 3), np.nan),
+        "H_R": np.full((T, 3), np.nan), "T_R": np.full((T, 3), np.nan),
+        "ik_active_L": np.zeros(T, dtype=bool),
+        "ik_active_R": np.zeros(T, dtype=bool),
+    }
+
+    def _episodes(phase):
+        """Yield (start, end_exclusive) for each contiguous stance episode (phase != 0)."""
+        in_ep = False
+        s = -1
+        for t in range(T):
+            stance = phase[t] != 0
+            if stance and not in_ep:
+                s = t; in_ep = True
+            elif not stance and in_ep:
+                yield (s, t); in_ep = False
+        if in_ep:
+            yield (s, T)
+
+    def _build_one(phase, cop_xy, ankle, toe, H_out, T_out, active_out):
+        for (s, e) in _episodes(phase):
+            if (e - s) < min_episode_frames:
+                continue
+            sub = phase[s:e]
+            heel_idx = s + np.flatnonzero(sub == 1)
+            full_idx = s + np.flatnonzero(sub == 2)
+            toe_idx = s + np.flatnonzero(sub == 3)
+            # Heel anchor: mean CoP over heel-only frames; fallback to first stance frame
+            if len(heel_idx) >= 2:
+                H_lat = float(cop_xy[heel_idx, 0].mean())
+                H_fwd = float(ankle[heel_idx, 1].mean())
+            else:
+                H_lat = float(cop_xy[s, 0])
+                H_fwd = float(ankle[s, 1])
+            # Toe anchor: mean CoP over toe-only frames; fallback to last stance frame
+            if len(toe_idx) >= 2:
+                T_lat = float(cop_xy[toe_idx, 0].mean())
+                T_fwd = float(toe[toe_idx, 1].mean())
+            else:
+                T_lat = float(cop_xy[e - 1, 0])
+                T_fwd = float(toe[e - 1, 1])
+            # Write per-frame anchor (constant within episode)
+            for t in range(s, e):
+                H_out[t] = [H_lat, H_fwd, 0.0]
+                T_out[t] = [T_lat, T_fwd, 0.0]
+            active_out[s:e] = True
+
+    _build_one(phase_L, cop_L_xy, ankle_L, toe_L,
+               out["H_L"], out["T_L"], out["ik_active_L"])
+    _build_one(phase_R, cop_R_xy, ankle_R, toe_R,
+               out["H_R"], out["T_R"], out["ik_active_R"])
+    return out
+
+
 def solve_pelvis_ip(anchor_L, anchor_R, grf_L, grf_R,
                     R_pelvis, foot_offset_L, foot_offset_R, eps=1e-3):
     """Solve pelvis world position from stance-foot anchor constraint (IP).

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from data.h5_conversion_helpers import subtract_baseline, detect_stance, compute_foot_anchor, solve_pelvis_ip, classify_sub_phases
+from data.h5_conversion_helpers import subtract_baseline, detect_stance, compute_foot_anchor, solve_pelvis_ip, classify_sub_phases, build_foot_anchors
 
 
 def test_baseline_subtraction_removes_constant_offset():
@@ -134,3 +134,52 @@ def test_classify_sub_phases_synthetic():
     assert n_toe >= 3, f"expected >=3 toe-only frames, got {n_toe}"
     # R foot all swing
     assert np.all(phase_R == 0), "R foot should be all swing"
+
+
+def test_build_foot_anchors_synthetic():
+    """Synthetic stance with known CoP at heel/toe — anchors should recover means.
+
+    Stance L: t in [30, 70). Phase: heel-only [30, 40), full [40, 60), toe-only [60, 70).
+    CoP_L: x=0.10 during heel-only, x sweeps 0.10→0.25 during full, x=0.25 during toe-only.
+    Expected: H_L_x ≈ 0.10, T_L_x ≈ 0.25.
+    """
+    T = 100
+    cop_L_xy = np.zeros((T, 2))
+    cop_R_xy = np.zeros((T, 2))
+    cop_L_xy[30:40, 0] = 0.10                          # heel-only
+    cop_L_xy[40:60, 0] = np.linspace(0.10, 0.25, 20)   # full sweep
+    cop_L_xy[60:70, 0] = 0.25                          # toe-only
+
+    # FK fwd (lab y) — simulate stance ankle world forward = treadmill-integrated value
+    # During stance, "forward" component of foot increases linearly with time
+    ankle_L = np.zeros((T, 3))
+    toe_L = np.zeros((T, 3))
+    ankle_L[:, 1] = np.linspace(0, 5.0, T)   # forward axis grows
+    toe_L[:, 1] = ankle_L[:, 1] + 0.16
+    ankle_R = np.zeros((T, 3))
+    toe_R = np.zeros((T, 3))
+
+    phase_L = np.zeros(T, dtype=np.int8)
+    phase_L[30:40] = 1   # heel-only
+    phase_L[40:60] = 2   # full
+    phase_L[60:70] = 3   # toe-only
+    phase_R = np.zeros(T, dtype=np.int8)
+
+    anchors = build_foot_anchors(
+        cop_L_xy, cop_R_xy, ankle_L, toe_L, ankle_R, toe_R,
+        phase_L, phase_R, fps=30, min_episode_frames=10,
+    )
+    H_L = anchors["H_L"]
+    T_L = anchors["T_L"]
+    ik_active_L = anchors["ik_active_L"]
+    # anchor x: lateral (CoP-derived)
+    assert abs(H_L[35, 0] - 0.10) < 1e-3, f"H_L lateral expected 0.10, got {H_L[35, 0]}"
+    assert abs(T_L[65, 0] - 0.25) < 1e-3, f"T_L lateral expected 0.25, got {T_L[65, 0]}"
+    # anchor z: ground level
+    assert abs(H_L[35, 2]) < 1e-9, f"H_L z expected 0, got {H_L[35, 2]}"
+    assert abs(T_L[65, 2]) < 1e-9
+    # ik_active during stance, inactive during swing
+    assert ik_active_L[35] and ik_active_L[65]
+    assert not ik_active_L[10] and not ik_active_L[90]
+    # R foot: no stance → not active
+    assert not anchors["ik_active_R"].any()
