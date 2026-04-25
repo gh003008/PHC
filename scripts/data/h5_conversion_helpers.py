@@ -378,6 +378,137 @@ def _fk_leg_world_xyz(pelvis_trans, R_pelvis_world,
     return ankle_world.astype(np.float64), toe_world.astype(np.float64)
 
 
+def solve_foot_ik_frame(pose_measured, trans_measured, R_pelvis_world,
+                        anchors_t, phase_t,
+                        offsets_L, offsets_R,
+                        weights, bounds_deg, max_iter,
+                        pose_prev=None):
+    """Single-frame IK solve.
+
+    Decision variables (packed into a flat vector x):
+      [pelvis_trans (3), L_hip_aa (3), L_knee_aa (3), L_ankle_aa (3),
+       R_hip_aa (3), R_knee_aa (3), R_ankle_aa (3)]
+      Total 21 DoF, but if a leg is in swing, its 9 DoF are pinned to measured (zero residual).
+
+    Cost (residuals returned to scipy.optimize.least_squares):
+      anchor: sqrt(w_anchor) * (FK_anchor_position - measured_anchor)  per active anchor
+      joint:  sqrt(w_joint)  * (joint_aa - measured_aa)                per leg joint axis
+      pelvis: sqrt(w_pelvis) * (pelvis_trans - measured_trans)         3 components
+      smooth: sqrt(w_smooth) * (joint_aa - prev_joint_aa)              per leg joint axis (if pose_prev given)
+
+    Args:
+        pose_measured: (24, 3) BONE order axis-angle.
+        trans_measured: (3,) pelvis trans.
+        R_pelvis_world: (3, 3).
+        anchors_t: dict with H_L, T_L, H_R, T_R (each (3,) world position; NaN if inactive).
+        phase_t: dict {'L': 0|1|2|3, 'R': 0|1|2|3}.
+        offsets_L, offsets_R: from _extract_leg_local_offsets.
+        weights: dict with 'anchor', 'joint', 'smooth', 'pelvis' float weights.
+        bounds_deg: float, joint angle bounds = measured ± this (degrees).
+        max_iter: scipy max iterations.
+        pose_prev: (24, 3) or None — previous frame's pose for smoothness term.
+
+    Returns:
+        pose_corrected: (24, 3) — only L/R hip/knee/ankle modified, rest = measured.
+        trans_corrected: (3,)
+        converged: bool
+    """
+    from scipy.optimize import least_squares
+
+    # BONE indices
+    L_HIP, L_KNEE, L_ANKLE = 1, 4, 7
+    R_HIP, R_KNEE, R_ANKLE = 2, 5, 8
+
+    # Pack measured into x0
+    x0 = np.concatenate([
+        trans_measured,
+        pose_measured[L_HIP], pose_measured[L_KNEE], pose_measured[L_ANKLE],
+        pose_measured[R_HIP], pose_measured[R_KNEE], pose_measured[R_ANKLE],
+    ])  # (21,)
+
+    # Bounds: ±bounds_deg around measured (joint angles), no bound on trans
+    b_rad = np.radians(bounds_deg)
+    lb = x0.copy() - b_rad
+    ub = x0.copy() + b_rad
+    lb[:3] = -np.inf
+    ub[:3] = +np.inf
+
+    sw_a = np.sqrt(weights["anchor"])
+    sw_j = np.sqrt(weights["joint"])
+    sw_p = np.sqrt(weights["pelvis"])
+    sw_s = np.sqrt(weights["smooth"]) if pose_prev is not None else 0.0
+
+    L_in_stance = phase_t["L"] != 0
+    R_in_stance = phase_t["R"] != 0
+
+    # Pre-extract anchors (use NaN-safe; inactive anchors not included in residuals)
+    H_L = anchors_t["H_L"]; T_L = anchors_t["T_L"]
+    H_R = anchors_t["H_R"]; T_R = anchors_t["T_R"]
+
+    if pose_prev is not None:
+        prev_LHIP = pose_prev[L_HIP]; prev_LKNEE = pose_prev[L_KNEE]; prev_LANK = pose_prev[L_ANKLE]
+        prev_RHIP = pose_prev[R_HIP]; prev_RKNEE = pose_prev[R_KNEE]; prev_RANK = pose_prev[R_ANKLE]
+
+    def residuals(x):
+        ptr = x[:3]
+        l_hip, l_knee, l_ank = x[3:6], x[6:9], x[9:12]
+        r_hip, r_knee, r_ank = x[12:15], x[15:18], x[18:21]
+        res = []
+        # FK
+        if L_in_stance:
+            ankle_L_w, toe_L_w = _fk_leg_world_xyz(ptr, R_pelvis_world, l_hip, l_knee, l_ank, offsets_L)
+            ph = phase_t["L"]
+            if ph == 1 or ph == 2:   # heel-only or full-contact: ankle anchored to H_L
+                res.append(sw_a * (ankle_L_w - H_L))
+            if ph == 2 or ph == 3:   # full-contact or toe-only: toe anchored to T_L
+                res.append(sw_a * (toe_L_w - T_L))
+        if R_in_stance:
+            ankle_R_w, toe_R_w = _fk_leg_world_xyz(ptr, R_pelvis_world, r_hip, r_knee, r_ank, offsets_R)
+            ph = phase_t["R"]
+            if ph == 1 or ph == 2:
+                res.append(sw_a * (ankle_R_w - H_R))
+            if ph == 2 or ph == 3:
+                res.append(sw_a * (toe_R_w - T_R))
+        # Joint angle deviation regularizer
+        res.append(sw_j * (l_hip - pose_measured[L_HIP]))
+        res.append(sw_j * (l_knee - pose_measured[L_KNEE]))
+        res.append(sw_j * (l_ank - pose_measured[L_ANKLE]))
+        res.append(sw_j * (r_hip - pose_measured[R_HIP]))
+        res.append(sw_j * (r_knee - pose_measured[R_KNEE]))
+        res.append(sw_j * (r_ank - pose_measured[R_ANKLE]))
+        # Pelvis trans regularizer
+        res.append(sw_p * (ptr - trans_measured))
+        # Smoothness (if pose_prev available)
+        if pose_prev is not None and sw_s > 0.0:
+            res.append(sw_s * (l_hip - prev_LHIP))
+            res.append(sw_s * (l_knee - prev_LKNEE))
+            res.append(sw_s * (l_ank - prev_LANK))
+            res.append(sw_s * (r_hip - prev_RHIP))
+            res.append(sw_s * (r_knee - prev_RKNEE))
+            res.append(sw_s * (r_ank - prev_RANK))
+        return np.concatenate(res)
+
+    try:
+        sol = least_squares(
+            residuals, x0, bounds=(lb, ub), method='trf', max_nfev=max_iter,
+        )
+        converged = sol.status > 0
+        x = sol.x
+    except Exception:
+        converged = False
+        x = x0
+
+    pose_corrected = pose_measured.copy()
+    trans_corrected = x[:3]
+    pose_corrected[L_HIP] = x[3:6]
+    pose_corrected[L_KNEE] = x[6:9]
+    pose_corrected[L_ANKLE] = x[9:12]
+    pose_corrected[R_HIP] = x[12:15]
+    pose_corrected[R_KNEE] = x[15:18]
+    pose_corrected[R_ANKLE] = x[18:21]
+    return pose_corrected, trans_corrected, converged
+
+
 def solve_pelvis_ip(anchor_L, anchor_R, grf_L, grf_R,
                     R_pelvis, foot_offset_L, foot_offset_R, eps=1e-3):
     """Solve pelvis world position from stance-foot anchor constraint (IP).

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from data.h5_conversion_helpers import subtract_baseline, detect_stance, compute_foot_anchor, solve_pelvis_ip, classify_sub_phases, build_foot_anchors, _extract_leg_local_offsets, _fk_leg_world_xyz
+from data.h5_conversion_helpers import subtract_baseline, detect_stance, compute_foot_anchor, solve_pelvis_ip, classify_sub_phases, build_foot_anchors, _extract_leg_local_offsets, _fk_leg_world_xyz, solve_foot_ik_frame
 
 
 def test_baseline_subtraction_removes_constant_offset():
@@ -222,3 +222,85 @@ def test_fk_leg_world_pelvis_translates_chain():
     a1, t1 = _fk_leg_world_xyz(delta, np.eye(3), np.zeros(3), np.zeros(3), np.zeros(3), offsets_L)
     assert np.allclose(a1 - a0, delta, atol=1e-6)
     assert np.allclose(t1 - t0, delta, atol=1e-6)
+
+
+def test_solve_foot_ik_frame_identity_no_adjustment():
+    """If anchor = current FK foot position, IK should converge with ~zero adjustment."""
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+    from scripts.data.h5_to_motion_lib_v2 import get_skeleton_tree
+
+    sk_tree = get_skeleton_tree()
+    offsets_L = _extract_leg_local_offsets(sk_tree, side='L')
+    offsets_R = _extract_leg_local_offsets(sk_tree, side='R')
+
+    # Measured pose: small non-zero hip flex (10° forward = pose_aa around X axis)
+    pose_measured = np.zeros((24, 3))
+    pose_measured[1] = [np.radians(10), 0, 0]   # L_HIP small flex
+    pose_measured[2] = [np.radians(10), 0, 0]   # R_HIP small flex
+    trans_measured = np.array([0.0, 0.9, 0.0])  # ~waist height
+    R_pelvis = np.eye(3)
+
+    # FK to compute current ankle/toe positions
+    ankle_L, toe_L = _fk_leg_world_xyz(trans_measured, R_pelvis,
+                                       pose_measured[1], pose_measured[4], pose_measured[7], offsets_L)
+    ankle_R, toe_R = _fk_leg_world_xyz(trans_measured, R_pelvis,
+                                       pose_measured[2], pose_measured[5], pose_measured[8], offsets_R)
+    # Use FK positions as anchors (consistent solution = no adjustment)
+    anchors_t = {
+        "H_L": ankle_L.copy(), "T_L": toe_L.copy(),
+        "H_R": ankle_R.copy(), "T_R": toe_R.copy(),
+    }
+    # Both legs in full-contact
+    phase_t = {"L": 2, "R": 2}
+
+    pose_corr, trans_corr, converged = solve_foot_ik_frame(
+        pose_measured, trans_measured, R_pelvis,
+        anchors_t, phase_t,
+        offsets_L, offsets_R,
+        weights={"anchor": 1e3, "joint": 0.1, "smooth": 0.0, "pelvis": 0.01},
+        bounds_deg=20.0, max_iter=50,
+        pose_prev=None,
+    )
+    assert converged
+    assert np.allclose(trans_corr, trans_measured, atol=1e-3)
+    assert np.allclose(pose_corr[1], pose_measured[1], atol=np.radians(0.5))
+
+
+def test_solve_foot_ik_frame_lateral_anchor_shifts_pelvis():
+    """Anchor 5cm lateral of FK position → IK should shift pelvis trans laterally by ~5cm."""
+    from scripts.data.h5_to_motion_lib_v2 import get_skeleton_tree
+
+    sk_tree = get_skeleton_tree()
+    offsets_L = _extract_leg_local_offsets(sk_tree, side='L')
+    offsets_R = _extract_leg_local_offsets(sk_tree, side='R')
+
+    pose_measured = np.zeros((24, 3))
+    trans_measured = np.array([0.0, 0.9, 0.0])
+    R_pelvis = np.eye(3)
+    # Only L in stance (full-contact); R swing (no anchor)
+    ankle_L, toe_L = _fk_leg_world_xyz(trans_measured, R_pelvis,
+                                       pose_measured[1], pose_measured[4], pose_measured[7], offsets_L)
+    # Shift L anchors laterally by +5cm (world Y axis = lateral in our convention; here use index 1)
+    delta_lat = 0.05
+    H_L_shifted = ankle_L.copy(); H_L_shifted[1] += delta_lat
+    T_L_shifted = toe_L.copy(); T_L_shifted[1] += delta_lat
+    anchors_t = {
+        "H_L": H_L_shifted, "T_L": T_L_shifted,
+        "H_R": np.full(3, np.nan), "T_R": np.full(3, np.nan),
+    }
+    phase_t = {"L": 2, "R": 0}
+
+    pose_corr, trans_corr, converged = solve_foot_ik_frame(
+        pose_measured, trans_measured, R_pelvis,
+        anchors_t, phase_t,
+        offsets_L, offsets_R,
+        weights={"anchor": 1e3, "joint": 0.1, "smooth": 0.0, "pelvis": 0.01},
+        bounds_deg=20.0, max_iter=50,
+        pose_prev=None,
+    )
+    assert converged
+    # With only joint reg + pelvis reg as costs, the cheapest solution is to shift pelvis trans
+    # laterally. Tolerance loose because joint regularizer can also absorb some.
+    assert (trans_corr[1] - trans_measured[1]) > 0.02, \
+        f"pelvis lateral should shift positive, got Δ={trans_corr[1] - trans_measured[1]:.4f}"
+    assert (trans_corr[1] - trans_measured[1]) <= delta_lat + 1e-3
