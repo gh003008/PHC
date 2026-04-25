@@ -1,5 +1,6 @@
 """Pure helpers for H5→SMPL conversion fixes. Unit-testable without HDF5 I/O."""
 import numpy as np
+from scipy.spatial.transform import Rotation as sRot
 
 
 def subtract_baseline(signal: np.ndarray, fps: int, baseline_s: float) -> np.ndarray:
@@ -363,7 +364,6 @@ def _fk_leg_world_xyz(pelvis_trans, R_pelvis_world,
         ankle_world: (3,) np.float64
         toe_world:   (3,) np.float64
     """
-    from scipy.spatial.transform import Rotation as sRot
     R_hip = sRot.from_rotvec(hip_aa).as_matrix()
     R_knee = sRot.from_rotvec(knee_aa).as_matrix()
     R_ankle = sRot.from_rotvec(ankle_aa).as_matrix()
