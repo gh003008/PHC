@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from data.h5_conversion_helpers import subtract_baseline, detect_stance, compute_foot_anchor, solve_pelvis_ip
+from data.h5_conversion_helpers import subtract_baseline, detect_stance, compute_foot_anchor, solve_pelvis_ip, classify_sub_phases
 
 
 def test_baseline_subtraction_removes_constant_offset():
@@ -93,7 +93,6 @@ def test_classify_sub_phases_synthetic():
     Pitch trajectory during stance: starts at +15° (heel down, toe up),
     sweeps through 0° (full contact mid-stance), ends at -15° (toe down, heel up).
     """
-    from data.h5_conversion_helpers import classify_sub_phases
     T = 100
     grf_L = np.zeros(T)
     grf_L[30:70] = 200.0  # 200N stance
