@@ -791,10 +791,12 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3
         _upright_ik = sRot.from_quat([0.5, 0.5, 0.5, 0.5])
         _upright_ik_inv = _upright_ik.inv()
         trans_zup_ik = _upright_ik.apply(trans)            # (T, 3) in Z-up
-        # Per-frame Z-up pelvis rotation matrix (apply upright on the right of measured global rotation).
-        # We have pelvis local axis-angle in pose_aa_local[:, 0] (BONE order). Convert to Z-up world R.
-        _R_pel_local = sRot.from_rotvec(pose_aa_local[:, 0])               # (T,)
-        _R_pel_world_zup = (_R_pel_local * _upright_ik_inv).as_matrix()    # (T, 3, 3)
+        # Per-frame pelvis rotation matrix for FK in Z-up world.
+        # pose_aa_local[:, 0] = R_pelvis_zup * upright (per line 466). FK uses Y-up
+        # skeleton offsets, so the pelvis world rotation must include `* upright` to
+        # transform Y-up local offsets into Z-up world. Use _R_pel_local directly.
+        _R_pel_local = sRot.from_rotvec(pose_aa_local[:, 0])               # = R_pelvis * upright
+        _R_pel_world_zup = _R_pel_local.as_matrix()                        # (T, 3, 3)
 
         # FK pass: ankle/toe world (Z-up) per frame, using current pose
         ankle_L_zup = np.zeros((_T, 3))
@@ -858,12 +860,20 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3
                     pitch_threshold_deg=ik_pitch_thr,
                 )
 
-                # Anchors  (NOTE: build_foot_anchors no longer takes fps parameter)
+                # Anchors. build_foot_anchors output convention is [lateral, forward, vertical]
+                # (column 0 = CoP medio-lateral, column 1 = FK foot column 1 as "forward").
+                # Our Z-up world convention is [forward, lateral, vertical] — column 0 IS forward.
+                # So pass ankle/toe with columns 0 and 1 swapped (helper sees forward at col 1),
+                # then swap anchor output columns back to Z-up [fwd, lat, vert] for IK.
+                _swap = np.array([1, 0, 2])
                 anchors = build_foot_anchors(
                     _cop_L_xy, _cop_R_xy,
-                    ankle_L_zup, toe_L_zup, ankle_R_zup, toe_R_zup,
+                    ankle_L_zup[:, _swap], toe_L_zup[:, _swap],
+                    ankle_R_zup[:, _swap], toe_R_zup[:, _swap],
                     phase_L, phase_R, min_episode_frames=10,
                 )
+                for _k in ("H_L", "T_L", "H_R", "T_R"):
+                    anchors[_k] = anchors[_k][:, _swap]
 
                 # Per-frame IK loop
                 weights = {
