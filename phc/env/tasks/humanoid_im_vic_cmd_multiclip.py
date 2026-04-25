@@ -30,6 +30,7 @@ class HumanoidImVICCmdMultiClip(HumanoidImVICCmdRetime):
         env_cfg = cfg["env"]
         self._multiclip_retime_enabled = env_cfg.get("multiclip_retime_enabled", True)
         self._multiclip_v_cmd_range = env_cfg.get("multiclip_v_cmd_range", [0.25, 0.85])
+        self._resample_on_cycle = env_cfg.get("multiclip_resample_on_cycle", False)
         # Metadata with signed v_x_mean_mid from compute_walking_direction_metadata.py.
         # Supports two schemas:
         #   (1) *_fwd_only.json      — already filtered to forward-straight clips,
@@ -154,3 +155,57 @@ class HumanoidImVICCmdMultiClip(HumanoidImVICCmdRetime):
         self._current_cmd[env_ids, 2] = 0.0
 
         return super()._sample_ref_state(env_ids)
+
+    # ------------------------------------------------------------------
+    # Slot 3: cycle-boundary v_cmd resampling
+    # ------------------------------------------------------------------
+
+    def _compute_reset(self):
+        """Override: detect cycle boundary BEFORE parent runs cycle logic, so
+        when we change motion_id here, parent's _sample_time / _global_offset
+        update uses the NEW clip.
+        """
+        if self._resample_on_cycle and getattr(self, 'cycle_motion', False):
+            time_now = (self.progress_buf * self.dt
+                        + self._motion_start_times
+                        + self._motion_start_times_offset)
+            cycle_mask = time_now >= self._motion_lib._motion_lengths
+            if cycle_mask.any():
+                cycle_env_ids = torch.where(cycle_mask)[0]
+                self._resample_vcmd_on_cycle(cycle_env_ids)
+        super()._compute_reset()
+
+    def _resample_vcmd_on_cycle(self, env_ids):
+        """Sample new v_cmd, re-pick closest clip, recompute retime scale + obs cmd.
+
+        Called at cycle boundary (motion_lib reaches end). Does NOT reset motion
+        start times — that's handled by parent's cycle_motion logic which runs
+        AFTER this. Updates self._sampled_motion_ids so parent picks the new
+        clip's start time and global offset.
+        """
+        n = env_ids.shape[0]
+        if n == 0:
+            return
+        v_lo, v_hi = self._multiclip_v_cmd_range
+        new_v_cmd = torch.rand(n, device=self.device) * (v_hi - v_lo) + v_lo  # [n]
+
+        # Re-pick closest eligible clip per env.
+        v_diff = (self._clip_v_nat.unsqueeze(0) - new_v_cmd.unsqueeze(1)).abs()  # [n, num_clips]
+        v_diff = v_diff.masked_fill(~self._clip_eligible.unsqueeze(0), float("inf"))
+        chosen_ids = v_diff.argmin(dim=1)  # [n]
+        self._sampled_motion_ids[env_ids] = chosen_ids
+
+        # Per-env retime scale.
+        if self._multiclip_retime_enabled:
+            s_lo, s_hi = self._retime_scale_range
+            ideal_s = new_v_cmd / self._clip_v_nat[chosen_ids].clamp(min=1e-6)
+            s = ideal_s.clamp(s_lo, s_hi)
+        else:
+            s = torch.ones(n, device=self.device)
+        self._motion_scale[env_ids] = s
+
+        # Update observation v_cmd (effective forward speed after retime).
+        effective_v = s * self._clip_v_nat[chosen_ids]
+        self._current_cmd[env_ids, 0] = effective_v
+        self._current_cmd[env_ids, 1] = 0.0
+        self._current_cmd[env_ids, 2] = 0.0
