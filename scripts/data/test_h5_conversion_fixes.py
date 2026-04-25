@@ -84,3 +84,54 @@ def test_solve_pelvis_ip_places_pelvis_above_anchor():
     pelvis = solve_pelvis_ip(anchor, anchor, grf, grf, R, foot_offset, foot_offset)
     # pelvis = anchor - R @ offset = 0 - (-Y) = +Y direction with magnitude 1
     np.testing.assert_allclose(pelvis, np.tile([0.0, 1.0, 0.0], (T, 1)), atol=1e-9)
+
+
+def test_classify_sub_phases_synthetic():
+    """Synthetic foot pitch sweep across one full gait cycle.
+
+    GRF: 0..30 swing → 30..70 stance → 70..100 swing. (single foot used for test)
+    Pitch trajectory during stance: starts at +15° (heel down, toe up),
+    sweeps through 0° (full contact mid-stance), ends at -15° (toe down, heel up).
+    """
+    from data.h5_conversion_helpers import classify_sub_phases
+    T = 100
+    grf_L = np.zeros(T)
+    grf_L[30:70] = 200.0  # 200N stance
+    grf_R = np.zeros(T)   # R always swing
+    # Foot pitch: ankle below toe = positive pitch (heel-down).
+    # Build synthetic ankle/toe so pitch sweeps +15 → 0 → -15 across stance.
+    ankle_L = np.zeros((T, 3))
+    toe_L = np.zeros((T, 3))
+    foot_len = 0.16  # m
+    for t in range(T):
+        if 30 <= t < 70:
+            # pitch_deg = +15° at t=30, 0° at t=50, -15° at t=70
+            pitch_deg = 15.0 - (t - 30) * (30.0 / 40.0)
+            pitch_rad = np.radians(pitch_deg)
+            # ankle at (0, 0, 0), toe in +x direction with vertical offset = foot_len * sin(pitch)
+            ankle_L[t] = [0.0, 0.0, 0.0]
+            toe_L[t] = [foot_len * np.cos(pitch_rad), 0.0, foot_len * np.sin(pitch_rad)]
+        else:
+            ankle_L[t] = [0.0, 0.0, 0.5]   # foot in air
+            toe_L[t] = [foot_len, 0.0, 0.5]
+    ankle_R = np.zeros((T, 3))
+    toe_R = np.zeros((T, 3))
+    toe_R[:, 0] = foot_len
+
+    phase_L, phase_R = classify_sub_phases(
+        grf_L, grf_R, ankle_L, toe_L, ankle_R, toe_R,
+        pitch_threshold_deg=5.0,
+    )
+
+    # Swing frames are 0
+    assert np.all(phase_L[:30] == 0), "pre-stance swing should be 0"
+    assert np.all(phase_L[70:] == 0), "post-stance swing should be 0"
+    # Stance: heel-only → full-contact → toe-only as pitch sweeps
+    n_heel = int((phase_L == 1).sum())
+    n_full = int((phase_L == 2).sum())
+    n_toe = int((phase_L == 3).sum())
+    assert n_heel >= 3, f"expected >=3 heel-only frames, got {n_heel}"
+    assert n_full >= 3, f"expected >=3 full-contact frames, got {n_full}"
+    assert n_toe >= 3, f"expected >=3 toe-only frames, got {n_toe}"
+    # R foot all swing
+    assert np.all(phase_R == 0), "R foot should be all swing"

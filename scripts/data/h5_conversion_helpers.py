@@ -199,6 +199,49 @@ def cop_replace_lateral(fk_foot_L, fk_foot_R, stance_L, stance_R,
     return anchor_L, anchor_R
 
 
+def classify_sub_phases(grf_L, grf_R, ankle_L, toe_L, ankle_R, toe_R,
+                       pitch_threshold_deg=5.0,
+                       grf_on=50.0, grf_off=20.0):
+    """Per-foot, per-frame stance sub-phase classification.
+
+    Stance/swing from GRF Schmitt trigger. Within stance, sub-phase from foot
+    pitch (angle of ankle→toe vector above horizontal):
+      pitch > +threshold:  heel-only (heel down, toe up)
+      |pitch| <= threshold: full-contact
+      pitch < -threshold:  toe-only (toe down, heel up)
+
+    Args:
+        grf_L, grf_R: [T] GRF magnitudes (Newtons).
+        ankle_L, toe_L, ankle_R, toe_R: [T, 3] world positions (Z-up frame).
+        pitch_threshold_deg: sub-phase split threshold (degrees).
+        grf_on, grf_off: Schmitt trigger thresholds for stance (Newtons).
+
+    Returns:
+        phase_L, phase_R: [T] int8 arrays. 0=swing, 1=heel-only, 2=full-contact, 3=toe-only.
+    """
+    T = len(grf_L)
+    stance_L = _schmitt(grf_L, grf_on, grf_off, on_when_above=True)
+    stance_R = _schmitt(grf_R, grf_on, grf_off, on_when_above=True)
+
+    def _foot_pitch_deg(ankle, toe):
+        v = toe - ankle                                    # (T, 3)
+        horiz = np.sqrt(v[:, 0] ** 2 + v[:, 1] ** 2)        # (T,)
+        return np.degrees(np.arctan2(v[:, 2], horiz))       # (T,)
+
+    pitch_L = _foot_pitch_deg(ankle_L, toe_L)
+    pitch_R = _foot_pitch_deg(ankle_R, toe_R)
+
+    def _classify(stance, pitch):
+        out = np.zeros(T, dtype=np.int8)
+        in_stance = stance
+        out[in_stance & (pitch > pitch_threshold_deg)] = 1
+        out[in_stance & (np.abs(pitch) <= pitch_threshold_deg)] = 2
+        out[in_stance & (pitch < -pitch_threshold_deg)] = 3
+        return out
+
+    return _classify(stance_L, pitch_L), _classify(stance_R, pitch_R)
+
+
 def solve_pelvis_ip(anchor_L, anchor_R, grf_L, grf_R,
                     R_pelvis, foot_offset_L, foot_offset_R, eps=1e-3):
     """Solve pelvis world position from stance-foot anchor constraint (IP).
