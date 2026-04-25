@@ -381,7 +381,7 @@ def _fk_leg_world_xyz(pelvis_trans, R_pelvis_world,
 def solve_foot_ik_frame(pose_measured, trans_measured, R_pelvis_world,
                         anchors_t, phase_t,
                         offsets_L, offsets_R,
-                        weights, bounds_deg, max_iter,
+                        weights, bounds_deg, max_nfev,
                         pose_prev=None):
     """Single-frame IK solve.
 
@@ -405,7 +405,7 @@ def solve_foot_ik_frame(pose_measured, trans_measured, R_pelvis_world,
         offsets_L, offsets_R: from _extract_leg_local_offsets.
         weights: dict with 'anchor', 'joint', 'smooth', 'pelvis' float weights.
         bounds_deg: float, joint angle bounds = measured ± this (degrees).
-        max_iter: scipy max iterations.
+        max_nfev: scipy max function evaluations (≈ max_iter × (21+1) for finite-diff Jacobian).
         pose_prev: (24, 3) or None — previous frame's pose for smoothness term.
 
     Returns:
@@ -490,7 +490,7 @@ def solve_foot_ik_frame(pose_measured, trans_measured, R_pelvis_world,
 
     try:
         sol = least_squares(
-            residuals, x0, bounds=(lb, ub), method='trf', max_nfev=max_iter,
+            residuals, x0, bounds=(lb, ub), method='trf', max_nfev=max_nfev,
         )
         converged = sol.status > 0
         x = sol.x

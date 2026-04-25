@@ -258,7 +258,7 @@ def test_solve_foot_ik_frame_identity_no_adjustment():
         anchors_t, phase_t,
         offsets_L, offsets_R,
         weights={"anchor": 1e3, "joint": 0.1, "smooth": 0.0, "pelvis": 0.01},
-        bounds_deg=20.0, max_iter=50,
+        bounds_deg=20.0, max_nfev=200,
         pose_prev=None,
     )
     assert converged
@@ -295,7 +295,7 @@ def test_solve_foot_ik_frame_lateral_anchor_shifts_pelvis():
         anchors_t, phase_t,
         offsets_L, offsets_R,
         weights={"anchor": 1e3, "joint": 0.1, "smooth": 0.0, "pelvis": 0.01},
-        bounds_deg=20.0, max_iter=50,
+        bounds_deg=20.0, max_nfev=200,
         pose_prev=None,
     )
     assert converged
@@ -304,3 +304,74 @@ def test_solve_foot_ik_frame_lateral_anchor_shifts_pelvis():
     assert (trans_corr[1] - trans_measured[1]) > 0.02, \
         f"pelvis lateral should shift positive, got Δ={trans_corr[1] - trans_measured[1]:.4f}"
     assert (trans_corr[1] - trans_measured[1]) <= delta_lat + 1e-3
+
+
+def test_solve_foot_ik_frame_heel_only_uses_only_ankle_anchor():
+    """Phase=1 (heel-only) → only ankle anchor matters; toe anchor is unused (NaN safe)."""
+    from scripts.data.h5_to_motion_lib_v2 import get_skeleton_tree
+
+    sk_tree = get_skeleton_tree()
+    offsets_L = _extract_leg_local_offsets(sk_tree, side='L')
+    offsets_R = _extract_leg_local_offsets(sk_tree, side='R')
+
+    pose_measured = np.zeros((24, 3))
+    trans_measured = np.array([0.0, 0.9, 0.0])
+    R_pelvis = np.eye(3)
+    ankle_L, _ = _fk_leg_world_xyz(trans_measured, R_pelvis,
+                                   pose_measured[1], pose_measured[4], pose_measured[7], offsets_L)
+    delta_lat = 0.05
+    H_L_shifted = ankle_L.copy(); H_L_shifted[1] += delta_lat
+    # Toe anchor is NaN — must NOT be used (phase=1 means heel-only)
+    anchors_t = {
+        "H_L": H_L_shifted, "T_L": np.full(3, np.nan),
+        "H_R": np.full(3, np.nan), "T_R": np.full(3, np.nan),
+    }
+    phase_t = {"L": 1, "R": 0}   # heel-only L, swing R
+
+    pose_corr, trans_corr, converged = solve_foot_ik_frame(
+        pose_measured, trans_measured, R_pelvis,
+        anchors_t, phase_t,
+        offsets_L, offsets_R,
+        weights={"anchor": 1e3, "joint": 0.1, "smooth": 0.0, "pelvis": 0.01},
+        bounds_deg=20.0, max_nfev=200,
+        pose_prev=None,
+    )
+    assert converged
+    # Pelvis should shift toward anchor; would NaN-explode if toe anchor was incorrectly used
+    assert np.isfinite(trans_corr).all()
+    assert (trans_corr[1] - trans_measured[1]) > 0.02
+
+
+def test_solve_foot_ik_frame_toe_only_uses_only_toe_anchor():
+    """Phase=3 (toe-only) → only toe anchor matters; ankle anchor is unused (NaN safe)."""
+    from scripts.data.h5_to_motion_lib_v2 import get_skeleton_tree
+
+    sk_tree = get_skeleton_tree()
+    offsets_L = _extract_leg_local_offsets(sk_tree, side='L')
+    offsets_R = _extract_leg_local_offsets(sk_tree, side='R')
+
+    pose_measured = np.zeros((24, 3))
+    trans_measured = np.array([0.0, 0.9, 0.0])
+    R_pelvis = np.eye(3)
+    _, toe_L = _fk_leg_world_xyz(trans_measured, R_pelvis,
+                                 pose_measured[1], pose_measured[4], pose_measured[7], offsets_L)
+    delta_lat = 0.05
+    T_L_shifted = toe_L.copy(); T_L_shifted[1] += delta_lat
+    # Ankle anchor is NaN — must NOT be used (phase=3 means toe-only)
+    anchors_t = {
+        "H_L": np.full(3, np.nan), "T_L": T_L_shifted,
+        "H_R": np.full(3, np.nan), "T_R": np.full(3, np.nan),
+    }
+    phase_t = {"L": 3, "R": 0}
+
+    pose_corr, trans_corr, converged = solve_foot_ik_frame(
+        pose_measured, trans_measured, R_pelvis,
+        anchors_t, phase_t,
+        offsets_L, offsets_R,
+        weights={"anchor": 1e3, "joint": 0.1, "smooth": 0.0, "pelvis": 0.01},
+        bounds_deg=20.0, max_nfev=200,
+        pose_prev=None,
+    )
+    assert converged
+    assert np.isfinite(trans_corr).all()
+    assert (trans_corr[1] - trans_measured[1]) > 0.02
