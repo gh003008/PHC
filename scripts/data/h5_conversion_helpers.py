@@ -319,6 +319,65 @@ def build_foot_anchors(cop_L_xy, cop_R_xy, ankle_L, toe_L, ankle_R, toe_R,
     return out
 
 
+def _extract_leg_local_offsets(skeleton_tree, side='L'):
+    """Extract local translations along the leg chain from poselib SkeletonTree.
+
+    sk_tree.local_translation is in MUJOCO order. Indices:
+      L: Pelvis(0)→L_Hip(1)→L_Knee(2)→L_Ankle(3)→L_Toe(4)
+      R: Pelvis(0)→R_Hip(5)→R_Knee(6)→R_Ankle(7)→R_Toe(8)
+
+    Returns dict with keys 'hip', 'knee', 'ankle', 'toe', each (3,) np.float64.
+    """
+    lt = skeleton_tree.local_translation.numpy().astype(np.float64)  # (24, 3)
+    if side == 'L':
+        return {
+            "hip":   lt[1],
+            "knee":  lt[2],
+            "ankle": lt[3],
+            "toe":   lt[4],
+        }
+    elif side == 'R':
+        return {
+            "hip":   lt[5],
+            "knee":  lt[6],
+            "ankle": lt[7],
+            "toe":   lt[8],
+        }
+    raise ValueError(f"side must be 'L' or 'R', got {side}")
+
+
+def _fk_leg_world_xyz(pelvis_trans, R_pelvis_world,
+                      hip_aa, knee_aa, ankle_aa, leg_local_offsets):
+    """Forward kinematics for one leg: world position of ankle and toe.
+
+    Standard FK: each joint's world rotation = parent world rotation × local rotation.
+    Each joint's world position = parent world position + parent world rotation × local offset.
+
+    Args:
+        pelvis_trans: (3,) pelvis world position.
+        R_pelvis_world: (3, 3) pelvis world rotation matrix.
+        hip_aa, knee_aa, ankle_aa: (3,) axis-angle joint rotations (BONE order semantics).
+        leg_local_offsets: dict from _extract_leg_local_offsets.
+
+    Returns:
+        ankle_world: (3,) np.float64
+        toe_world:   (3,) np.float64
+    """
+    from scipy.spatial.transform import Rotation as sRot
+    R_hip = sRot.from_rotvec(hip_aa).as_matrix()
+    R_knee = sRot.from_rotvec(knee_aa).as_matrix()
+    R_ankle = sRot.from_rotvec(ankle_aa).as_matrix()
+
+    hip_world = pelvis_trans + R_pelvis_world @ leg_local_offsets["hip"]
+    R_hip_w = R_pelvis_world @ R_hip
+    knee_world = hip_world + R_hip_w @ leg_local_offsets["knee"]
+    R_knee_w = R_hip_w @ R_knee
+    ankle_world = knee_world + R_knee_w @ leg_local_offsets["ankle"]
+    R_ankle_w = R_knee_w @ R_ankle
+    toe_world = ankle_world + R_ankle_w @ leg_local_offsets["toe"]
+    return ankle_world.astype(np.float64), toe_world.astype(np.float64)
+
+
 def solve_pelvis_ip(anchor_L, anchor_R, grf_L, grf_R,
                     R_pelvis, foot_offset_L, foot_offset_R, eps=1e-3):
     """Solve pelvis world position from stance-foot anchor constraint (IP).

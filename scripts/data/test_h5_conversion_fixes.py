@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from data.h5_conversion_helpers import subtract_baseline, detect_stance, compute_foot_anchor, solve_pelvis_ip, classify_sub_phases, build_foot_anchors
+from data.h5_conversion_helpers import subtract_baseline, detect_stance, compute_foot_anchor, solve_pelvis_ip, classify_sub_phases, build_foot_anchors, _extract_leg_local_offsets, _fk_leg_world_xyz
 
 
 def test_baseline_subtraction_removes_constant_offset():
@@ -183,3 +183,42 @@ def test_build_foot_anchors_synthetic():
     assert not ik_active_L[10] and not ik_active_L[90]
     # R foot: no stance → not active
     assert not anchors["ik_active_R"].any()
+
+
+def test_fk_leg_world_zero_pose_matches_local_translations():
+    """Zero pose (identity rotations) → world ankle = sum of local translations along chain."""
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+    from scripts.data.h5_to_motion_lib_v2 import get_skeleton_tree
+
+    sk_tree = get_skeleton_tree()
+    offsets_L = _extract_leg_local_offsets(sk_tree, side='L')
+    # Zero joint angles, identity pelvis rotation, pelvis at origin
+    pelvis_trans = np.zeros(3)
+    R_pelvis = np.eye(3)
+    hip_aa = np.zeros(3)
+    knee_aa = np.zeros(3)
+    ankle_aa = np.zeros(3)
+
+    ankle_world, toe_world = _fk_leg_world_xyz(
+        pelvis_trans, R_pelvis, hip_aa, knee_aa, ankle_aa, offsets_L,
+    )
+    # Expected: sum of local translations (all rotations identity)
+    expected_ankle = offsets_L["hip"] + offsets_L["knee"] + offsets_L["ankle"]
+    expected_toe = expected_ankle + offsets_L["toe"]
+    assert np.allclose(ankle_world, expected_ankle, atol=1e-6), \
+        f"ankle_world {ankle_world} != expected {expected_ankle}"
+    assert np.allclose(toe_world, expected_toe, atol=1e-6)
+
+
+def test_fk_leg_world_pelvis_translates_chain():
+    """Translating pelvis by Δ should translate ankle/toe by Δ (zero rotations)."""
+    from scripts.data.h5_to_motion_lib_v2 import get_skeleton_tree
+
+    sk_tree = get_skeleton_tree()
+    offsets_L = _extract_leg_local_offsets(sk_tree, side='L')
+    delta = np.array([1.0, 2.0, 3.0])
+
+    a0, t0 = _fk_leg_world_xyz(np.zeros(3), np.eye(3), np.zeros(3), np.zeros(3), np.zeros(3), offsets_L)
+    a1, t1 = _fk_leg_world_xyz(delta, np.eye(3), np.zeros(3), np.zeros(3), np.zeros(3), offsets_L)
+    assert np.allclose(a1 - a0, delta, atol=1e-6)
+    assert np.allclose(t1 - t0, delta, atol=1e-6)
