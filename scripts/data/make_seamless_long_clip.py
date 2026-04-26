@@ -35,10 +35,17 @@ def build_seamless_loop(clip, n_frames_target):
     if len(hs) < 2:
         raise RuntimeError("not enough heel strikes for cycle extraction")
 
+    # Full stride = same-foot HS to next same-foot HS = 2 step intervals.
+    # Single-step (consecutive HS) loops produce visible limp because the same
+    # foot strikes every cycle. Use HS[k] -> HS[k+2] for proper L/R alternation.
+    if len(hs) < 3:
+        raise RuntimeError("need at least 3 heel strikes for full-stride cycle")
     mid_idx = len(hs) // 2
-    hs_a, hs_b = hs[max(0, mid_idx - 1)], hs[mid_idx]
+    hs_a_idx = max(0, mid_idx - 1)
+    hs_b_idx = min(len(hs) - 1, hs_a_idx + 2)
+    hs_a, hs_b = hs[hs_a_idx], hs[hs_b_idx]
     cycle_len = hs_b - hs_a
-    print(f"  cycle: frames [{hs_a}, {hs_b}) len={cycle_len} ({cycle_len/FPS:.2f}s)")
+    print(f"  cycle: frames [{hs_a}, {hs_b}) len={cycle_len} ({cycle_len/FPS:.2f}s) — full stride (HS[{hs_a_idx}]→HS[{hs_b_idx}])")
 
     cycle_pq = pose_quat[hs_a:hs_b].copy()
     cycle_pql = pose_quat_local[hs_a:hs_b].copy()
