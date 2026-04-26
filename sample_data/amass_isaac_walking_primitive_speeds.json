@@ -1,32 +1,176 @@
 [
   {
+    "name": "0-KIT_167_walking_slow09_poses",
+    "frames": 231,
+    "v_x_signed": -0.30372427298228494,
+    "v_x_abs": 0.30372427298228494
+  },
+  {
+    "name": "0-KIT_425_walking_03_poses",
+    "frames": 195,
+    "v_x_signed": -0.31194289580260026,
+    "v_x_abs": 0.31194289580260026
+  },
+  {
     "name": "0-KIT_8_WalkingStraightBackwards08_poses",
     "frames": 197,
-    "v_x_nat": 0.31787280379776467
+    "v_x_signed": 0.31787280379776467,
+    "v_x_abs": 0.31787280379776467
   },
   {
     "name": "0-KIT_7_WalkingStraightBackwards04_poses",
     "frames": 184,
-    "v_x_nat": 0.3246661373053167
+    "v_x_signed": 0.3246661373053167,
+    "v_x_abs": 0.3246661373053167
   },
   {
     "name": "0-KIT_11_WalkingStraightBackwards09_1_poses",
     "frames": 179,
-    "v_x_nat": 0.3600354499407236
+    "v_x_signed": 0.3600354499407236,
+    "v_x_abs": 0.3600354499407236
+  },
+  {
+    "name": "0-KIT_9_walking_medium06_poses",
+    "frames": 185,
+    "v_x_signed": -0.36135994867297266,
+    "v_x_abs": 0.36135994867297266
   },
   {
     "name": "0-KIT_12_WalkingStraightBackwards05_poses",
     "frames": 203,
-    "v_x_nat": 0.36596539059000366
+    "v_x_signed": 0.36596539059000366,
+    "v_x_abs": 0.36596539059000366
+  },
+  {
+    "name": "0-KIT_9_walking_medium01_poses",
+    "frames": 183,
+    "v_x_signed": -0.367529510161917,
+    "v_x_abs": 0.367529510161917
+  },
+  {
+    "name": "0-KIT_167_walking_medium03_poses",
+    "frames": 185,
+    "v_x_signed": -0.3843181840232527,
+    "v_x_abs": 0.3843181840232527
   },
   {
     "name": "0-KIT_10_WalkingStraightBackwards07_poses",
     "frames": 169,
-    "v_x_nat": 0.38888106245128495
+    "v_x_signed": 0.38888106245128495,
+    "v_x_abs": 0.38888106245128495
+  },
+  {
+    "name": "0-KIT_359_walking_medium01_poses",
+    "frames": 176,
+    "v_x_signed": -0.4112057690540402,
+    "v_x_abs": 0.4112057690540402
+  },
+  {
+    "name": "0-KIT_167_walking_medium08_poses",
+    "frames": 177,
+    "v_x_signed": -0.41177577694768164,
+    "v_x_abs": 0.41177577694768164
+  },
+  {
+    "name": "0-KIT_11_WalkingStraightForwards05_poses",
+    "frames": 163,
+    "v_x_signed": -0.43484810925007,
+    "v_x_abs": 0.43484810925007
+  },
+  {
+    "name": "0-KIT_12_WalkingStraightForwards09_1_poses",
+    "frames": 186,
+    "v_x_signed": -0.435470805117778,
+    "v_x_abs": 0.435470805117778
+  },
+  {
+    "name": "0-KIT_8_WalkingStraightForwards04_poses",
+    "frames": 190,
+    "v_x_signed": -0.4438808213170744,
+    "v_x_abs": 0.4438808213170744
+  },
+  {
+    "name": "0-KIT_167_walking_run04_poses",
+    "frames": 173,
+    "v_x_signed": -0.4963062470560377,
+    "v_x_abs": 0.4963062470560377
+  },
+  {
+    "name": "0-KIT_167_walking_run01_poses",
+    "frames": 167,
+    "v_x_signed": -0.5149699634458649,
+    "v_x_abs": 0.5149699634458649
+  },
+  {
+    "name": "0-KIT_425_walking_medium08_poses",
+    "frames": 162,
+    "v_x_signed": -0.5275853691054844,
+    "v_x_abs": 0.5275853691054844
+  },
+  {
+    "name": "0-KIT_424_walking_run08_poses",
+    "frames": 178,
+    "v_x_signed": -0.5333859162832415,
+    "v_x_abs": 0.5333859162832415
+  },
+  {
+    "name": "0-KIT_359_walking_fast04_poses",
+    "frames": 153,
+    "v_x_signed": -0.5417208470272418,
+    "v_x_abs": 0.5417208470272418
+  },
+  {
+    "name": "0-KIT_425_walking_fast05_poses",
+    "frames": 122,
+    "v_x_signed": -0.5608302669574661,
+    "v_x_abs": 0.5608302669574661
+  },
+  {
+    "name": "0-KIT_9_walking_run07_poses",
+    "frames": 134,
+    "v_x_signed": -0.5741820590533068,
+    "v_x_abs": 0.5741820590533068
+  },
+  {
+    "name": "0-KIT_314_walking_fast04_poses",
+    "frames": 145,
+    "v_x_signed": -0.5945786671769584,
+    "v_x_abs": 0.5945786671769584
+  },
+  {
+    "name": "0-KIT_3_walking_run02_poses",
+    "frames": 185,
+    "v_x_signed": -0.6006559718360382,
+    "v_x_abs": 0.6006559718360382
+  },
+  {
+    "name": "0-KIT_424_walking_fast10_poses",
+    "frames": 145,
+    "v_x_signed": -0.6299129377354012,
+    "v_x_abs": 0.6299129377354012
   },
   {
     "name": "0-KIT_675_walk_with_handrail_right09_poses",
     "frames": 112,
-    "v_x_nat": 0.6486619110691629
+    "v_x_signed": 0.6486619110691629,
+    "v_x_abs": 0.6486619110691629
+  },
+  {
+    "name": "0-KIT_314_walking_run09_poses",
+    "frames": 146,
+    "v_x_signed": -0.676278603355855,
+    "v_x_abs": 0.676278603355855
+  },
+  {
+    "name": "0-KIT_425_walking_medium05_poses",
+    "frames": 127,
+    "v_x_signed": -0.6825879701963078,
+    "v_x_abs": 0.6825879701963078
+  },
+  {
+    "name": "0-KIT_424_walking_run07_poses",
+    "frames": 124,
+    "v_x_signed": -0.75973153603384,
+    "v_x_abs": 0.75973153603384
   }
 ]
