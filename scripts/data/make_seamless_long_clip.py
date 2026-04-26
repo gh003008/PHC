@@ -36,16 +36,25 @@ def build_seamless_loop(clip, n_frames_target):
         raise RuntimeError("not enough heel strikes for cycle extraction")
 
     # Full stride = same-foot HS to next same-foot HS = 2 step intervals.
-    # Single-step (consecutive HS) loops produce visible limp because the same
-    # foot strikes every cycle. Use HS[k] -> HS[k+2] for proper L/R alternation.
+    # Pick the modal stride length (most-common, robust to outliers like the
+    # acceleration-from-standing first stride and deceleration-to-stop tail
+    # strides which are shorter than steady walking).
     if len(hs) < 3:
         raise RuntimeError("need at least 3 heel strikes for full-stride cycle")
-    mid_idx = len(hs) // 2
-    hs_a_idx = max(0, mid_idx - 1)
-    hs_b_idx = min(len(hs) - 1, hs_a_idx + 2)
+    stride_lengths = np.array([hs[k + 2] - hs[k] for k in range(len(hs) - 2)])
+    unique, counts = np.unique(stride_lengths, return_counts=True)
+    target_stride = int(unique[np.argmax(counts)])  # mode of walking strides
+    mode_indices = np.where(stride_lengths == target_stride)[0]
+    # Among strides matching mode, pick the median-index one (middle of walking
+    # phase). This avoids both acceleration (first walking stride) and the
+    # last walking stride which sits next to the deceleration phase.
+    hs_a_idx = int(mode_indices[len(mode_indices) // 2])
+    hs_b_idx = hs_a_idx + 2
     hs_a, hs_b = hs[hs_a_idx], hs[hs_b_idx]
     cycle_len = hs_b - hs_a
-    print(f"  cycle: frames [{hs_a}, {hs_b}) len={cycle_len} ({cycle_len/FPS:.2f}s) — full stride (HS[{hs_a_idx}]→HS[{hs_b_idx}])")
+    print(f"  stride lengths (HS[k]→HS[k+2]): {stride_lengths.tolist()}")
+    print(f"  modal stride={target_stride} (occurs {counts.max()}x), candidates={mode_indices.tolist()}, picked HS[{hs_a_idx}]→HS[{hs_b_idx}]")
+    print(f"  cycle: frames [{hs_a}, {hs_b}) len={cycle_len} ({cycle_len/FPS:.2f}s) — full stride, steady-walk core")
 
     cycle_pq = pose_quat[hs_a:hs_b].copy()
     cycle_pql = pose_quat_local[hs_a:hs_b].copy()
