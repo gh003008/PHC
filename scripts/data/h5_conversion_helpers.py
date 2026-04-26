@@ -710,9 +710,12 @@ def solve_foot_ik_trajectory(pose_measured, trans_measured, R_pelvis_world,
                     + _anchor_loss(ankle_R_w, H_R, mask_R_ankle)
                     + _anchor_loss(toe_R_w, T_R_anc, mask_R_toe))
 
-        # Smoothness across consecutive frames
-        L_smooth_pose = ((pose_var[1:] - pose_var[:-1]) ** 2).mean()
-        L_smooth_trans = ((trans_var[1:] - trans_var[:-1]) ** 2).mean()
+        # Smoothness on acceleration (second difference): penalize jerk, not velocity.
+        # Velocity smoothing flattens swing arcs (constant motion incurs penalty).
+        # Acceleration smoothing allows constant velocity → preserves natural swing curves
+        # while still suppressing sudden jumps. Standard trajectory-optimization choice.
+        L_smooth_pose = ((pose_var[2:] - 2.0 * pose_var[1:-1] + pose_var[:-2]) ** 2).mean()
+        L_smooth_trans = ((trans_var[2:] - 2.0 * trans_var[1:-1] + trans_var[:-2]) ** 2).mean()
         L_smooth = L_smooth_pose + L_smooth_trans
 
         # Regularizers (deviation from measured)
