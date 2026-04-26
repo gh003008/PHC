@@ -1,8 +1,11 @@
 """Make a 60s seamless walking clip by extracting one gait cycle from KIT_11
-and looping it phase-aligned.
+and looping it phase-aligned, with slerp blending at loop boundaries.
 
 Detection: heel-strikes via root z-velocity zero-crossings (going positive).
 Loop construction: take cycle from HS_i to HS_j, repeat until target duration.
+Boundary smoothing: replace BLEND_W frames straddling each loop seam with a
+spherical-lerp interpolation between the pose just-before and just-after the
+window. Trans is left untouched (already continuous via cycle_dx accumulation).
 """
 import numpy as np
 import torch
@@ -12,6 +15,7 @@ SOURCE_PKL = "sample_data/amass_isaac_walking_forward_single.pkl"
 OUT_PKL = "sample_data/amass_walking_kit11_seamless_60s.pkl"
 TARGET_DURATION_S = 60.0
 FPS = 30
+BLEND_W = 5  # frames straddling each loop seam to slerp-blend
 
 
 def detect_heel_strikes(root_trans, fps=30):
@@ -21,6 +25,60 @@ def detect_heel_strikes(root_trans, fps=30):
     vz = np.diff(z, prepend=z[0])
     hs = np.where((vz[:-1] < 0) & (vz[1:] >= 0))[0] + 1
     return hs
+
+
+def slerp_quat(q0, q1, t):
+    """Spherical lerp between two batches of unit quaternions.
+    q0, q1: (..., 4) in [x, y, z, w] format. t: scalar in [0, 1]."""
+    dot = np.sum(q0 * q1, axis=-1, keepdims=True)
+    q1c = np.where(dot < 0, -q1, q1)
+    dot_abs = np.abs(dot)
+    # Linear fallback for very close quats (avoids div-by-zero)
+    close = dot_abs > 0.9995
+    linear = q0 + t * (q1c - q0)
+    linear = linear / (np.linalg.norm(linear, axis=-1, keepdims=True) + 1e-12)
+    # Spherical interp
+    dot_clip = np.clip(dot_abs, -1.0, 1.0)
+    theta_0 = np.arccos(dot_clip)
+    sin_theta_0 = np.sin(theta_0)
+    sin_safe = np.where(sin_theta_0 < 1e-8, 1.0, sin_theta_0)
+    theta = theta_0 * t
+    sin_theta = np.sin(theta)
+    s0 = np.cos(theta) - dot_clip * sin_theta / sin_safe
+    s1 = sin_theta / sin_safe
+    spherical = s0 * q0 + s1 * q1c
+    return np.where(close, linear, spherical)
+
+
+def smooth_loop_boundaries(out_pq, out_pql, out_aa, cycle_len, n_loops, blend_w):
+    """Slerp-blend a window of `blend_w` frames straddling each loop seam.
+    Anchors are the unmodified frames just outside the window: pre = boundary - half - 1,
+    post = boundary + (blend_w - half). Modifies arrays in-place."""
+    half = blend_w // 2
+    n_total = out_pq.shape[0]
+    seams_blended = 0
+    for k in range(1, n_loops):
+        boundary = k * cycle_len
+        pre_idx = boundary - half - 1
+        post_idx = boundary - half + blend_w
+        if pre_idx < 0 or post_idx >= n_total:
+            continue
+        pre_pq = out_pq[pre_idx].copy()
+        post_pq = out_pq[post_idx].copy()
+        pre_pql = out_pql[pre_idx].copy()
+        post_pql = out_pql[post_idx].copy()
+        pre_aa = out_aa[pre_idx].copy()
+        post_aa = out_aa[post_idx].copy()
+        for i in range(blend_w):
+            f = boundary - half + i
+            if f < 0 or f >= n_total:
+                continue
+            t = (i + 1) / (blend_w + 1)
+            out_pq[f] = slerp_quat(pre_pq, post_pq, t)
+            out_pql[f] = slerp_quat(pre_pql, post_pql, t)
+            out_aa[f] = (1 - t) * pre_aa + t * post_aa
+        seams_blended += 1
+    return seams_blended
 
 
 def build_seamless_loop(clip, n_frames_target):
@@ -82,6 +140,9 @@ def build_seamless_loop(clip, n_frames_target):
     out_pql = out_pql[:n_frames_target]
     out_aa = out_aa[:n_frames_target]
     out_tr = out_tr[:n_frames_target]
+
+    seams = smooth_loop_boundaries(out_pq, out_pql, out_aa, cycle_len, n_loops, BLEND_W)
+    print(f"  slerp blend: {seams} seams smoothed (window={BLEND_W} frames each)")
 
     return {
         "pose_quat_global": out_pq,
