@@ -100,18 +100,21 @@ def build_seamless_loop(clip, n_frames_target):
     if len(hs) < 3:
         raise RuntimeError("need at least 3 heel strikes for full-stride cycle")
     stride_lengths = np.array([hs[k + 2] - hs[k] for k in range(len(hs) - 2)])
-    unique, counts = np.unique(stride_lengths, return_counts=True)
-    target_stride = int(unique[np.argmax(counts)])  # mode of walking strides
-    mode_indices = np.where(stride_lengths == target_stride)[0]
-    # Among strides matching mode, pick the median-index one (middle of walking
-    # phase). This avoids both acceleration (first walking stride) and the
-    # last walking stride which sits next to the deceleration phase.
-    hs_a_idx = int(mode_indices[len(mode_indices) // 2])
+    # Walking strides are the longest in the clip — deceleration shortens stride
+    # length systematically. Filter to strides >= median (walking-half), then
+    # pick the middle-index candidate (avoids first/last walking strides which
+    # touch acceleration/deceleration boundaries).
+    median_stride = float(np.median(stride_lengths))
+    walking_mask = stride_lengths >= median_stride
+    walking_indices = np.where(walking_mask)[0]
+    if len(walking_indices) < 1:
+        raise RuntimeError("no walking-half strides found")
+    hs_a_idx = int(walking_indices[len(walking_indices) // 2])
     hs_b_idx = hs_a_idx + 2
     hs_a, hs_b = hs[hs_a_idx], hs[hs_b_idx]
     cycle_len = hs_b - hs_a
     print(f"  stride lengths (HS[k]→HS[k+2]): {stride_lengths.tolist()}")
-    print(f"  modal stride={target_stride} (occurs {counts.max()}x), candidates={mode_indices.tolist()}, picked HS[{hs_a_idx}]→HS[{hs_b_idx}]")
+    print(f"  median stride={median_stride}, walking-half candidates={walking_indices.tolist()}, picked HS[{hs_a_idx}]→HS[{hs_b_idx}]")
     print(f"  cycle: frames [{hs_a}, {hs_b}) len={cycle_len} ({cycle_len/FPS:.2f}s) — full stride, steady-walk core")
 
     cycle_pq = pose_quat[hs_a:hs_b].copy()
