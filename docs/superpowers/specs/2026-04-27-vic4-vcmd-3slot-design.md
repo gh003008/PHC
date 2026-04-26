@@ -117,7 +117,7 @@ learning_rate: 5e-5
 - `task`: `HumanoidImVICCmdMultiClip`
 - `motion_file`: `sample_data/amass_walking_3clips_speedspaced.pkl` (NEW, 3 clips, see §5)
 - `terminationDistance`: 0.4
-- `multiclip_v_cmd_range`: [0.38, 0.83] (auto-derived from 3 clips × ±15%)
+- `multiclip_v_cmd_range`: [0.32, 0.75] (user-set option B-1+c; lower bound matches walking_03 mid-clip retime min; coverage gap at [0.427, 0.554] of width 0.127 m/s accepted — see §5)
 
 ### S6
 - `task`: `HumanoidImVICCmdMultiClip`
@@ -129,20 +129,38 @@ learning_rate: 5e-5
 
 **Source**: `sample_data/amass_isaac_walking_primitive.pkl` (used by AMASS_MULTICLIP_FWD)
 
-**Procedure**:
-1. For every clip in source pkl, compute natural forward velocity:
-   ```python
-   v_x_nat = (root_pos[T-1, 0] - root_pos[0, 0]) / (T / fps)
-   ```
-2. Filter: forward-only (`v_x > 0.3`), reasonable length (60–250 frames).
-3. Hand-pick 3 clips spaced at:
-   - Slow: closest to ~0.45 m/s
-   - Medium: closest to ~0.58 m/s
-   - Fast: closest to ~0.72 m/s
-4. Save as `sample_data/amass_walking_3clips_speedspaced.pkl`.
-5. Print verification: `clip_name, n_frames, v_x_nat` for each picked clip.
+**Important convention discovered**: in this dataset, **forward walking has NEGATIVE `v_x`** (clips named "...Forwards" have v_x < 0; "...Backwards" have v_x > 0 but are body-frame backward and excluded). Filter must use `|v_x|` with sign-consistency check.
 
-If AMASS pool insufficient, fall back to KIT_425 PERSONAL pool with same selection criterion.
+**Procedure**:
+1. For every clip in source pkl, compute signed v_x and |v_x|:
+   ```python
+   v_x_signed = (root_pos[T-1, 0] - root_pos[0, 0]) / (T / fps)
+   v_x_abs = abs(v_x_signed)
+   ```
+2. Filter: `v_x_abs >= 0.30` AND reasonable length (60 ≤ T ≤ 250 frames). Output JSON includes both `v_x_signed` and `v_x_abs`. Sort ascending by `v_x_abs`.
+3. **User-selected 3 clips (option B-1)** — all KIT_425 user, all v_x_signed < 0 (forward):
+   - Slow: `0-KIT_425_PERSONAL_walking_03_*` (v_x_abs ≈ 0.312)
+   - Medium: `0-KIT_425_PERSONAL_medium08_*` (v_x_abs ≈ 0.528)
+   - Fast: `0-KIT_425_PERSONAL_medium05_*` (v_x_abs ≈ 0.683)
+4. Save as `sample_data/amass_walking_3clips_speedspaced.pkl`.
+5. Print verification: `clip_name, n_frames, v_x_signed, v_x_abs` for each picked clip.
+
+**v_cmd coverage analysis (gap accepted, B-1+c)**:
+
+Note: MultiClip task uses `|v_x_mean_mid|` (mid-clip steady-walking average from existing `sample_data/amass_isaac_walking_primitive_fwd_only.json`) as the retime selection key — NOT the end-to-end |v_x| we computed for selection. Mid-clip values are higher because they exclude startup/slowdown phases.
+
+| clip | end-to-end \|v_x\| (selection) | mid-clip \|v_x_mean_mid\| (retime key) | retime ±15% range |
+|---|---|---|---|
+| walking_03 | 0.312 | **0.371** | [0.315, 0.427] |
+| medium08 | 0.528 | **0.652** | [0.554, 0.750] |
+| medium05 | 0.683 | **0.845** | [0.718, 0.972] |
+
+v_cmd range [0.32, 0.75] (option c) coverage:
+- 0.32–0.427: walking_03 ✓
+- **0.427–0.554: GAP** (0.127 m/s wide) — MultiClip argmins to nearest clip with retime clamped at boundary; max r_vel mismatch ~6 cm/s
+- 0.554–0.750: medium08 (with medium05 overlap from 0.718)
+
+User accepted this gap to keep retime narrow at ±15% (real walking kinematics differ at different speeds, not just time-scaled).
 
 ## 6. Code Changes
 
