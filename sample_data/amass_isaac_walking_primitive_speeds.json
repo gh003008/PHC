@@ -1,0 +1,32 @@
+[
+  {
+    "name": "0-KIT_8_WalkingStraightBackwards08_poses",
+    "frames": 197,
+    "v_x_nat": 0.31787280379776467
+  },
+  {
+    "name": "0-KIT_7_WalkingStraightBackwards04_poses",
+    "frames": 184,
+    "v_x_nat": 0.3246661373053167
+  },
+  {
+    "name": "0-KIT_11_WalkingStraightBackwards09_1_poses",
+    "frames": 179,
+    "v_x_nat": 0.3600354499407236
+  },
+  {
+    "name": "0-KIT_12_WalkingStraightBackwards05_poses",
+    "frames": 203,
+    "v_x_nat": 0.36596539059000366
+  },
+  {
+    "name": "0-KIT_10_WalkingStraightBackwards07_poses",
+    "frames": 169,
+    "v_x_nat": 0.38888106245128495
+  },
+  {
+    "name": "0-KIT_675_walk_with_handrail_right09_poses",
+    "frames": 112,
+    "v_x_nat": 0.6486619110691629
+  }
+]
