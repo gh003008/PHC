@@ -18,6 +18,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Training Conditions And Ablations** - Run the main condition plus required pain-observation, pain-reward, and left/right impairment ablations.
 - [x] **Phase 5: Mechanism Evaluation And Evidence Package** - Report pain/load reduction, locomotion competence, side-specificity, and diagnostics with v1.0 scope boundaries.
 - [ ] **Phase 6: Main Checkpoint Preservation And Smoke Evaluation** - Preserve the current main checkpoint and verify the trained policy can run in evaluation mode.
+- [ ] **Phase 7: Main Run Evidence Extraction** - Extract and package evidence from the main condition run before interpreting mechanism quality.
+- [ ] **Phase 8: Minimal Ablation Runs** - Run the smallest condition matrix needed to separate pain observability and reward pressure.
 
 ## Phase Details
 
@@ -89,7 +91,7 @@ Preserved from the source design but not part of the active v1.0 milestone:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -98,14 +100,36 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 3. Expanded-Observation Checkpoint Adaptation | 1/1 | Complete | 2026-04-27 |
 | 4. Training Conditions And Ablations | 1/1 | Complete | 2026-04-27 |
 | 5. Mechanism Evaluation And Evidence Package | 1/1 | Complete | 2026-04-27 |
-| 6. Main Checkpoint Preservation And Smoke Evaluation | 0/0 | Not planned | - |
+| 6. Main Checkpoint Preservation And Smoke Evaluation | 0/1 | Planned | - |
+| 7. Main Run Evidence Extraction | 0/1 | Planned | - |
+| 8. Minimal Ablation Runs | 0/1 | Planned | - |
 
 ### Phase 6: Main Checkpoint Preservation And Smoke Evaluation
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Preserve the current main checkpoint and verify the trained policy can run in evaluation mode.
+**Requirements**: CKPT-01, CKPT-02, CKPT-03, EVAL-02
 **Depends on:** Phase 5
-**Plans:** 0 plans
+**Plans:** 1 plan
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 6 to break down)
+- [ ] 06-01-PLAN.md
+
+### Phase 7: Main Run Evidence Extraction
+
+**Goal:** Extract and package evidence from the main condition run before interpreting mechanism quality.
+**Requirements**: EVAL-01, EVAL-02, EVAL-03, EVAL-05
+**Depends on:** Phase 6
+**Plans:** 1 plan
+
+Plans:
+- [ ] 07-01-PLAN.md
+
+### Phase 8: Minimal Ablation Runs
+
+**Goal:** Run the smallest condition matrix needed to separate pain observability and reward pressure.
+**Requirements**: ABL-01, ABL-02, ABL-03, EVAL-01, EVAL-02, EVAL-03
+**Depends on:** Phase 7
+**Plans:** 1 plan
+
+Plans:
+- [ ] 08-01-PLAN.md

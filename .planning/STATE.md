@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** Show that a pain-conditioned PHC controller can reduce synthetic unilateral knee pain/load without locomotion collapse, and that the effect is side-specific.
-**Current focus:** Milestone complete - external training evidence pending
+**Current focus:** Evidence closure phases planned; next executable phase is Phase 6
 
 ## Current Position
 
-Phase: 5 of 5 (Mechanism Evaluation And Evidence Package)
+Phase: 6 of 8 (Main Checkpoint Preservation And Smoke Evaluation)
 Plan: 1 of 1 in current phase
-Status: Complete
-Last activity: 2026-04-27 - Completed milestone audit with tech debt status
+Status: Planned
+Last activity: 2026-04-27 - Planned phases 6-8 for checkpoint preservation, evidence extraction, and minimal ablations
 
-Progress: [██████████] 100%
+Progress: [██████░░░░] 62%
 
 ## Performance Metrics
 
@@ -32,6 +32,9 @@ Progress: [██████████] 100%
 | Phase 3 | 1 | N/A | N/A |
 | Phase 4 | 1 | N/A | N/A |
 | Phase 5 | 1 | N/A | N/A |
+| Phase 6 | 1 | Planned | N/A |
+| Phase 7 | 1 | Planned | N/A |
+| Phase 8 | 1 | Planned | N/A |
 
 **Recent Trend:**
 - Last 5 plans: Phase 1 plan 01-01 complete; Phase 2 plan 02-01 complete; Phase 3 plan 03-01 complete; Phase 4 plan 04-01 complete; Phase 5 plan 05-01 complete
@@ -67,6 +70,9 @@ Recent decisions affecting current work:
 ### Roadmap Evolution
 
 - Phase 6 added: Main Checkpoint Preservation And Smoke Evaluation
+- Phase 7 added: Main Run Evidence Extraction
+- Phase 8 added: Minimal Ablation Runs
+- Phases 6-8 planned as the evidence closure path after the initial main run.
 
 ### Pending Todos
 
