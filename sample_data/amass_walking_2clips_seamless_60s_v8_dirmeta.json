@@ -1,0 +1,10 @@
+{
+  "0-KIT_425_walking_medium08_poses_seamless_60s": {
+    "v_x_mean_mid": -1.068,
+    "dir_class": "forward_straight"
+  },
+  "0-KIT_425_walking_medium05_poses_seamless_60s": {
+    "v_x_mean_mid": -0.975,
+    "dir_class": "forward_straight"
+  }
+}
