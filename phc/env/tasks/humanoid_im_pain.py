@@ -345,7 +345,7 @@ class HumanoidImPainV1(HumanoidImPain):
             return
 
         super()._update_pain_buffers()
-        if self._pain_obs_dim == 0 or self._active_knee_side == "none":
+        if self._active_knee_side == "none":
             return
 
         for side in ("left", "right"):
@@ -385,6 +385,10 @@ class HumanoidImPainV1(HumanoidImPain):
         self.extras["pain_v1_mechanical_proxy_note"] = (
             "synthetic thresholded medial tibiofemoral knee load proxy; "
             "medial KAM/contact force is unavailable in PHC tensors"
+        )
+        self.extras["pain_v1_obs_enabled"] = self._pain_obs_enabled
+        self.extras["pain_v1_reward_enabled"] = self.pain_mode in (
+            "reward_only", "guard_and_reward",
         )
 
     def _compute_reward(self, actions):

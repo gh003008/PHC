@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** Show that a pain-conditioned PHC controller can reduce synthetic unilateral knee pain/load without locomotion collapse, and that the effect is side-specific.
-**Current focus:** Phase 4 - Training Conditions And Ablations
+**Current focus:** Phase 5 - Mechanism Evaluation And Evidence Package
 
 ## Current Position
 
-Phase: 4 of 5 (Training Conditions And Ablations)
+Phase: 5 of 5 (Mechanism Evaluation And Evidence Package)
 Plan: 0 of TBD in current phase
 Status: Ready to plan
-Last activity: 2026-04-27 - Completed Phase 3 expanded-observation checkpoint adaptation
+Last activity: 2026-04-27 - Completed Phase 4 training condition and ablation matrix
 
-Progress: [██████░░░░] 60%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -30,9 +30,10 @@ Progress: [██████░░░░] 60%
 | Phase 1 | 1 | N/A | N/A |
 | Phase 2 | 1 | N/A | N/A |
 | Phase 3 | 1 | N/A | N/A |
+| Phase 4 | 1 | N/A | N/A |
 
 **Recent Trend:**
-- Last 5 plans: Phase 1 plan 01-01 complete; Phase 2 plan 02-01 complete; Phase 3 plan 03-01 complete
+- Last 5 plans: Phase 1 plan 01-01 complete; Phase 2 plan 02-01 complete; Phase 3 plan 03-01 complete; Phase 4 plan 04-01 complete
 - Trend: N/A
 
 *Updated after each plan completion*
@@ -54,6 +55,8 @@ Recent decisions affecting current work:
   using available torque/ROM/work tensors and reward-only affected-knee cost.
 - Phase 3 added conditional expanded-observation checkpoint adaptation that
   copies pretrained leading obs weights and zero-initializes pain obs columns.
+- Phase 4 documented the main/no-obs/no-reward/left-right condition matrix and
+  kept action guard outside the main mechanism claim.
 
 ### Pending Todos
 

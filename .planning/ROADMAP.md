@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: V1 Task And Pain Observation Contract** - Create the explicit v1 task boundary and body-part pain observation schema.
 - [x] **Phase 2: Synthetic Pain And Reward Mechanism** - Compute unilateral knee pain drive/state and wire reward-only pain cost for the main experiment.
 - [x] **Phase 3: Expanded-Observation Checkpoint Adaptation** - Load pretrained PHC checkpoints into the expanded observation policy while preserving initial motor-prior behavior.
-- [ ] **Phase 4: Training Conditions And Ablations** - Run the main condition plus required pain-observation, pain-reward, and left/right impairment ablations.
+- [x] **Phase 4: Training Conditions And Ablations** - Run the main condition plus required pain-observation, pain-reward, and left/right impairment ablations.
 - [ ] **Phase 5: Mechanism Evaluation And Evidence Package** - Report pain/load reduction, locomotion competence, side-specificity, and diagnostics with v1.0 scope boundaries.
 
 ## Phase Details
@@ -63,7 +63,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Developer can run `pain_obs_off + pain_reward_on` and compare it against the main condition.
   3. Developer can run `pain_obs_on + pain_reward_off` and compare it against the main condition.
   4. Left-knee and right-knee impairment runs both produce comparable logs for evaluation.
-**Plans**: TBD
+**Plans**: 04-01-PLAN.md
 
 ### Phase 5: Mechanism Evaluation And Evidence Package
 **Goal**: The v1.0 result can be judged as mechanism proof, failure, or inconclusive without drifting into patient-specific claims.
@@ -95,5 +95,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. V1 Task And Pain Observation Contract | 1/1 | Complete | 2026-04-27 |
 | 2. Synthetic Pain And Reward Mechanism | 1/1 | Complete | 2026-04-27 |
 | 3. Expanded-Observation Checkpoint Adaptation | 1/1 | Complete | 2026-04-27 |
-| 4. Training Conditions And Ablations | 0/TBD | Not started | - |
+| 4. Training Conditions And Ablations | 1/1 | Complete | 2026-04-27 |
 | 5. Mechanism Evaluation And Evidence Package | 0/TBD | Not started | - |
