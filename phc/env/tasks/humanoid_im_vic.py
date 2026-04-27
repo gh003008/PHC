@@ -170,6 +170,13 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
         # Foot position imitation reward (extra foot tracking to reduce sliding/dropping)
         self._foot_pos_reward_w = cfg["env"].get("foot_pos_reward_w", 0.0)
         self._foot_pos_reward_k = cfg["env"].get("foot_pos_reward_k", 40.0)
+        # VIC: Foot clearance reward — phase-aware swing-only height reward
+        # to break the slide-without-stepping local optimum that 24-body
+        # averaged tracking allows. Penalizes only when reference says foot
+        # should be lifted but sim foot stays low.
+        self._foot_clearance_reward_w = cfg["env"].get("foot_clearance_reward_w", 0.0)
+        self._foot_clearance_reward_k = cfg["env"].get("foot_clearance_reward_k", 30.0)
+        self._foot_clearance_swing_thresh = cfg["env"].get("foot_clearance_swing_thresh", 0.05)
 
         if self._vic_enabled:
             print(f"[{self.__class__.__name__}] VIC Enabled. Stage: {self._vic_curriculum_stage}")
@@ -204,13 +211,19 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
             n_reward_cols += 1
         if self._foot_pos_reward_w > 0:
             n_reward_cols += 1
+        if self._foot_clearance_reward_w > 0:
+            n_reward_cols += 1
         self.reward_raw = torch.zeros((self.num_envs, n_reward_cols)).to(self.device)
         self.power_coefficient = cfg["env"].get("power_coefficient", 0.0005)
 
-        # Foot position reward: build foot body IDs
-        if self._foot_pos_reward_w > 0:
+        # Foot body IDs: reused by foot_pos_reward and foot_clearance_reward.
+        # Order: [L_Ankle, R_Ankle, L_Toe, R_Toe]
+        if self._foot_pos_reward_w > 0 or self._foot_clearance_reward_w > 0:
             self._foot_body_ids = self._build_key_body_ids_tensor(["L_Ankle", "R_Ankle", "L_Toe", "R_Toe"])
+        if self._foot_pos_reward_w > 0:
             print(f"[{self.__class__.__name__}] Foot Pos Reward: w={self._foot_pos_reward_w}, k={self._foot_pos_reward_k}, bodies={self._foot_body_ids.tolist()}")
+        if self._foot_clearance_reward_w > 0:
+            print(f"[{self.__class__.__name__}] Foot Clearance Reward: w={self._foot_clearance_reward_w}, k={self._foot_clearance_reward_k}, swing_thresh={self._foot_clearance_swing_thresh}m, bodies={self._foot_body_ids.tolist()}")
 
         if (not self.headless or flags.server_mode):
             self._build_marker_state_tensors()
@@ -1201,6 +1214,23 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
             foot_pos_reward[self.progress_buf <= 3] = 0
             self.rew_buf[:] += foot_pos_reward
             self.reward_raw = torch.cat([self.reward_raw, foot_pos_reward[:, None]], dim=-1)
+
+        # VIC: Foot clearance reward — phase-aware swing-only height tracking.
+        # Avoids the average-reward trap where stance-phase accuracy hides
+        # swing-phase failures (the slide-without-stepping local optimum).
+        # Penalizes only when ref says foot should be raised (z > thresh) and
+        # sim foot is below ref. Stance-phase contribution is excluded by mask.
+        if self._foot_clearance_reward_w > 0:
+            sim_foot_z = body_pos[:, self._foot_body_ids, 2]      # [N, 4]
+            ref_foot_z = ref_rb_pos[:, self._foot_body_ids, 2]    # [N, 4]
+            swing_mask = (ref_foot_z > self._foot_clearance_swing_thresh).float()  # [N, 4]
+            n_swing = swing_mask.sum(dim=-1).clamp(min=1.0)       # [N]
+            shortfall = torch.relu(ref_foot_z - sim_foot_z) * swing_mask  # [N, 4]
+            clearance_err = (shortfall ** 2).sum(dim=-1) / n_swing        # [N]
+            foot_clearance_reward = torch.exp(-self._foot_clearance_reward_k * clearance_err) * self._foot_clearance_reward_w
+            foot_clearance_reward[self.progress_buf <= 3] = 0
+            self.rew_buf[:] += foot_clearance_reward
+            self.reward_raw = torch.cat([self.reward_raw, foot_clearance_reward[:, None]], dim=-1)
 
         return
 
