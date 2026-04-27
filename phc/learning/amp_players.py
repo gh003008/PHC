@@ -171,11 +171,13 @@ class AMPPlayerContinuous(common_player.CommonPlayer):
     def _build_net_config(self):
         config = super()._build_net_config()
         if (hasattr(self, 'env')):
+            task = self.env.task
+            pain_obs_size = _get_pain_obs_size(self)
             config['amp_input_shape'] = self.env.amp_observation_space.shape
-            config['task_obs_size_detail'] = self.env.task.get_task_obs_size_detail()
-            if self.env.task.has_task:
-                config['self_obs_size'] = self.env.task.get_self_obs_size()
-                config['task_obs_size'] = self.env.task.get_task_obs_size()
+            config['task_obs_size_detail'] = task.get_task_obs_size_detail()
+            if task.has_task:
+                config['self_obs_size'] = task.get_self_obs_size() + pain_obs_size
+                config['task_obs_size'] = task.get_task_obs_size()
                 
         else:
             config['amp_input_shape'] = self.env_info['amp_observation_space']
@@ -323,11 +325,13 @@ class AMPPlayerDiscrete(common_player.CommonPlayerDiscrete):
     def _build_net_config(self):
         config = super()._build_net_config()
         if (hasattr(self, 'env')):
+            task = self.env.task
+            pain_obs_size = _get_pain_obs_size(self)
             config['amp_input_shape'] = self.env.amp_observation_space.shape
-            config['task_obs_size_detail'] = self.env.task.get_task_obs_size_detail()
-            if self.env.task.has_task:
-                config['self_obs_size'] = self.env.task.get_self_obs_size()
-                config['task_obs_size'] = self.env.task.get_task_obs_size()
+            config['task_obs_size_detail'] = task.get_task_obs_size_detail()
+            if task.has_task:
+                config['self_obs_size'] = task.get_self_obs_size() + pain_obs_size
+                config['task_obs_size'] = task.get_task_obs_size()
                 
         else:
             config['amp_input_shape'] = self.env_info['amp_observation_space']

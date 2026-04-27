@@ -786,11 +786,15 @@ class AMPAgent(common_agent.CommonAgent):
     def _build_net_config(self):
         config = super()._build_net_config()
         config['amp_input_shape'] = self._amp_observation_space.shape
-        
-        config['task_obs_size_detail'] = self.vec_env.env.task.get_task_obs_size_detail()
-        if self.vec_env.env.task.has_task:
-            config['self_obs_size'] = self.vec_env.env.task.get_self_obs_size()
-            config['task_obs_size'] = self.vec_env.env.task.get_task_obs_size()
+
+        task = self.vec_env.env.task
+        config['task_obs_size_detail'] = task.get_task_obs_size_detail()
+        if task.has_task:
+            pain_obs_size = 0
+            if hasattr(task, "get_pain_obs_size"):
+                pain_obs_size = int(task.get_pain_obs_size())
+            config['self_obs_size'] = task.get_self_obs_size() + pain_obs_size
+            config['task_obs_size'] = task.get_task_obs_size()
 
         return config
 
