@@ -104,7 +104,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 6. Main Checkpoint Preservation And Smoke Evaluation | 1/1 | Complete | 2026-04-27 |
 | 7. Main Run Evidence Extraction | 1/1 | Complete | 2026-04-27 |
 | 07.1. Pain Metric Scalar Logging Instrumentation | 1/1 | Complete | 2026-04-28 |
-| 8. Minimal Ablation Runs | 0/1 | Blocked | - |
+| 8. Minimal Ablation Runs | 0/1 | Ready | - |
 
 ### Phase 6: Main Checkpoint Preservation And Smoke Evaluation
 
