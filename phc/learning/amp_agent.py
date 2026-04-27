@@ -5,6 +5,7 @@ from rl_games.common import schedulers
 from rl_games.common import vecenv
 
 from isaacgym.torch_utils import *
+import torch
 
 import time
 from datetime import datetime
@@ -102,10 +103,86 @@ class AMPAgent(common_agent.CommonAgent):
         return state
 
     def set_full_state_weights(self, weights):
+        weights = self._adapt_expanded_obs_checkpoint(weights)
         super().set_full_state_weights(weights)
         if "kin_optimizer" in weights:
             print("!!!loading kin_optimizer!!! Remove this message asa p!!")
             self.kin_optimizer.load_state_dict(weights['kin_optimizer'])
+
+    def _adapt_expanded_obs_checkpoint(self, weights):
+        task = getattr(getattr(getattr(self, "vec_env", None), "env", None), "task", None)
+        pain_obs_size = 0
+        if task is not None and hasattr(task, "get_pain_obs_size"):
+            pain_obs_size = int(task.get_pain_obs_size())
+        if pain_obs_size <= 0 or "model" not in weights:
+            return weights
+
+        target_model = self.model.state_dict()
+        adapted = copy.deepcopy(weights)
+        adapted_model, changed = self._copy_leading_obs_columns(
+            adapted["model"], target_model
+        )
+        adapted["model"] = adapted_model
+
+        if self.normalize_input and "running_mean_std" in adapted:
+            target_stats = self.running_mean_std.state_dict()
+            adapted["running_mean_std"], stats_changed = self._adapt_running_mean_std(
+                adapted["running_mean_std"], target_stats
+            )
+            changed = changed or stats_changed
+
+        if changed:
+            # Old optimizer state may contain buffers with the pre-expansion input
+            # shape. Start the adapted policy with a fresh optimizer state.
+            adapted["optimizer"] = self.optimizer.state_dict()
+            adapted["phc_pain_v1_checkpoint_adapted"] = {
+                "pain_obs_size": pain_obs_size,
+                "policy": "copy leading pretrained obs columns; zero new pain obs columns",
+            }
+            print(
+                "PHC-Pain-v1 checkpoint adaptation: copied pretrained observation "
+                f"columns and zero-initialized {pain_obs_size} new pain obs columns."
+            )
+        return adapted
+
+    def _copy_leading_obs_columns(self, saved_state, target_state):
+        out = copy.deepcopy(saved_state)
+        changed = False
+        for key, saved in saved_state.items():
+            if key not in target_state:
+                continue
+            target = target_state[key]
+            if saved.shape == target.shape:
+                continue
+            if (
+                len(saved.shape) == 2
+                and len(target.shape) == 2
+                and saved.shape[0] == target.shape[0]
+                and saved.shape[1] < target.shape[1]
+            ):
+                expanded = torch.zeros_like(target)
+                expanded[:, : saved.shape[1]].copy_(saved)
+                out[key] = expanded
+                changed = True
+        return out, changed
+
+    def _adapt_running_mean_std(self, saved_state, target_state):
+        out = copy.deepcopy(saved_state)
+        changed = False
+        for key in ("running_mean", "running_var"):
+            if key not in saved_state or key not in target_state:
+                continue
+            saved = saved_state[key]
+            target = target_state[key]
+            if saved.shape == target.shape:
+                continue
+            if len(saved.shape) == 1 and len(target.shape) == 1 and saved.shape[0] < target.shape[0]:
+                fill = 1.0 if key == "running_var" else 0.0
+                expanded = torch.full_like(target, fill)
+                expanded[: saved.shape[0]].copy_(saved)
+                out[key] = expanded
+                changed = True
+        return out, changed
         
 
     def freeze_state_weights(self):

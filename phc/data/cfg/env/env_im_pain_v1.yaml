@@ -76,6 +76,10 @@ pain:
     w_work: 0.10
     memory_alpha: 0.05
 
+  checkpoint_adaptation:
+    expanded_obs_zero_init: True
+    original_obs_columns: 945
+
   obs:
     enabled: True
     include_memory: True

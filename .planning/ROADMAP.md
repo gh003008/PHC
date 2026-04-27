@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: V1 Task And Pain Observation Contract** - Create the explicit v1 task boundary and body-part pain observation schema.
 - [x] **Phase 2: Synthetic Pain And Reward Mechanism** - Compute unilateral knee pain drive/state and wire reward-only pain cost for the main experiment.
-- [ ] **Phase 3: Expanded-Observation Checkpoint Adaptation** - Load pretrained PHC checkpoints into the expanded observation policy while preserving initial motor-prior behavior.
+- [x] **Phase 3: Expanded-Observation Checkpoint Adaptation** - Load pretrained PHC checkpoints into the expanded observation policy while preserving initial motor-prior behavior.
 - [ ] **Phase 4: Training Conditions And Ablations** - Run the main condition plus required pain-observation, pain-reward, and left/right impairment ablations.
 - [ ] **Phase 5: Mechanism Evaluation And Evidence Package** - Report pain/load reduction, locomotion competence, side-specificity, and diagnostics with v1.0 scope boundaries.
 
@@ -52,7 +52,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Original observation input weights match the pretrained checkpoint after adaptation.
   3. New pain-observation input weights are zero-initialized at load time.
   4. Before pain fine-tuning, the adapted policy matches the original PHC motor-prior behavior within an explicit equivalence check.
-**Plans**: TBD
+**Plans**: 03-01-PLAN.md
 
 ### Phase 4: Training Conditions And Ablations
 **Goal**: The mechanism proof has the required condition matrix to distinguish observability, reward pressure, and impairment side effects.
@@ -94,6 +94,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|----------------|--------|-----------|
 | 1. V1 Task And Pain Observation Contract | 1/1 | Complete | 2026-04-27 |
 | 2. Synthetic Pain And Reward Mechanism | 1/1 | Complete | 2026-04-27 |
-| 3. Expanded-Observation Checkpoint Adaptation | 0/TBD | Not started | - |
+| 3. Expanded-Observation Checkpoint Adaptation | 1/1 | Complete | 2026-04-27 |
 | 4. Training Conditions And Ablations | 0/TBD | Not started | - |
 | 5. Mechanism Evaluation And Evidence Package | 0/TBD | Not started | - |
