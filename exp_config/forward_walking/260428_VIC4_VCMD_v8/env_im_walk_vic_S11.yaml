@@ -61,6 +61,7 @@ env:
   retime_scale_range: [0.85, 1.15]
 
   multiclip_v_cmd_range: [0.82, 1.23]   # 2-clip natural range 0.97-1.07 × retime ±15%
+  multiclip_v_nat_path: "sample_data/amass_walking_2clips_seamless_60s_v8_dirmeta.json"
   multiclip_retime_enabled: True
   multiclip_resample_on_cycle: False
 
