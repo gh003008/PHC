@@ -1,0 +1,23 @@
+{
+  "main": {
+    "exp_name": "phc_shape_pnn_iccv_pain_v1",
+    "server": "server1-jinsu",
+    "checkpoint": "~/PHC/output/HumanoidIm/phc_shape_pnn_iccv_pain_v1/evidence/Humanoid_short50_20260427_2314.pth",
+    "stdout_log": "~/PHC/output/HumanoidIm/phc_shape_pnn_iccv_pain_v1/evidence/phc_pain_v1_short50_3968.out",
+    "tensorboard_event": "~/PHC/output/HumanoidIm/phc_shape_pnn_iccv_pain_v1/Humanoid_27-23-11-45/summaries/events.out.tfevents.1777299180.server1",
+    "start_epoch": 63752,
+    "end_epoch": 63802,
+    "updates": 51,
+    "reward_first": 15.381918907165527,
+    "reward_last": 350.2726135253906,
+    "reward_last10_avg": 335.4804260253906,
+    "episode_length_first": 19.0,
+    "episode_length_last": 461.21697998046875,
+    "episode_length_last10_avg": 441.7922332763672,
+    "body_pos_reward_last": 0.9402341842651367,
+    "body_rot_reward_last": 0.7526975274085999,
+    "power_reward_last": -0.08625558018684387,
+    "pain_metric_status": "missing",
+    "pain_tags": []
+  }
+}

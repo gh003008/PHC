@@ -1,14 +1,18 @@
-# Phase 8 Plan Verification
+---
+status: gaps_found
+---
 
-**Status:** PASS
+# Phase 8 Verification
 
-The plan is executable because it starts from the documented main run, requires
-Phase 7 metric readiness before launching more jobs, and isolates each ablation
-into its own checkpoint/log namespace.
+**Status:** GAPS_FOUND
+
+Phase 8 correctly stopped before launching ablations because Phase 7 did not
+find required pain/load metrics.
 
 ## Checks
 
-- It covers the minimum causal matrix: main, no_obs, no_reward.
-- It preserves Slurm GPU isolation.
-- It includes the known command fixes from the smoke run.
-- It blocks ablations if pain metrics are not extractable.
+- Phase 7 verdict was `METRICS_BLOCKED`.
+- No ablation jobs were launched.
+- The block prevents wasting GPU time on runs that cannot satisfy Gate 1 or
+  Gate 3 of the evaluation protocol.
+- Required remediation is scalar logging for `pain_v1_*` training extras.

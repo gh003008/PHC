@@ -17,8 +17,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Expanded-Observation Checkpoint Adaptation** - Load pretrained PHC checkpoints into the expanded observation policy while preserving initial motor-prior behavior.
 - [x] **Phase 4: Training Conditions And Ablations** - Run the main condition plus required pain-observation, pain-reward, and left/right impairment ablations.
 - [x] **Phase 5: Mechanism Evaluation And Evidence Package** - Report pain/load reduction, locomotion competence, side-specificity, and diagnostics with v1.0 scope boundaries.
-- [ ] **Phase 6: Main Checkpoint Preservation And Smoke Evaluation** - Preserve the current main checkpoint and verify the trained policy can run in evaluation mode.
-- [ ] **Phase 7: Main Run Evidence Extraction** - Extract and package evidence from the main condition run before interpreting mechanism quality.
+- [x] **Phase 6: Main Checkpoint Preservation And Smoke Evaluation** - Preserve the current main checkpoint and verify the trained policy can run in evaluation mode.
+- [x] **Phase 7: Main Run Evidence Extraction** - Extract and package evidence from the main condition run before interpreting mechanism quality.
 - [ ] **Phase 8: Minimal Ablation Runs** - Run the smallest condition matrix needed to separate pain observability and reward pressure.
 
 ## Phase Details
@@ -100,9 +100,9 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 3. Expanded-Observation Checkpoint Adaptation | 1/1 | Complete | 2026-04-27 |
 | 4. Training Conditions And Ablations | 1/1 | Complete | 2026-04-27 |
 | 5. Mechanism Evaluation And Evidence Package | 1/1 | Complete | 2026-04-27 |
-| 6. Main Checkpoint Preservation And Smoke Evaluation | 0/1 | Planned | - |
-| 7. Main Run Evidence Extraction | 0/1 | Planned | - |
-| 8. Minimal Ablation Runs | 0/1 | Planned | - |
+| 6. Main Checkpoint Preservation And Smoke Evaluation | 1/1 | Complete | 2026-04-27 |
+| 7. Main Run Evidence Extraction | 1/1 | Complete | 2026-04-27 |
+| 8. Minimal Ablation Runs | 0/1 | Blocked | - |
 
 ### Phase 6: Main Checkpoint Preservation And Smoke Evaluation
 
@@ -112,7 +112,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 **Plans:** 1 plan
 
 Plans:
-- [ ] 06-01-PLAN.md
+- [x] 06-01-PLAN.md
 
 ### Phase 7: Main Run Evidence Extraction
 
@@ -122,7 +122,7 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 07-01-PLAN.md
+- [x] 07-01-PLAN.md
 
 ### Phase 8: Minimal Ablation Runs
 
