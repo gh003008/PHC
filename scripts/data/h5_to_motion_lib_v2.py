@@ -377,7 +377,7 @@ def read_cop_xy(f, trial_path, side):
     return cop_xy, True
 
 
-def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3axis=False, upper_body=False, elbow_offset_deg=0.0, pelvis_obliq_scale=1.0, pelvis_lat_scale=1.0, stance_anchor_ip=False, stance_anchor_source="fk", foot_ik="none", foot_ik_kwargs=None):
+def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3axis=False, counter_rotation=False, upper_body=False, elbow_offset_deg=0.0, pelvis_obliq_scale=1.0, pelvis_lat_scale=1.0, stance_anchor_ip=False, stance_anchor_source="fk", foot_ik="none", foot_ik_kwargs=None):
     """Convert a single H5 trial to PHC motion library format.
 
     Returns:
@@ -519,7 +519,11 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3
             vals = 0.5 * (vL + vR)
         else:
             vals = _read_side(f"{trial_path}/mocap/angle/{side}/{joint}/x")
-        if spine_3axis and smpl_idx in (3, 6):
+        # counter_rotation: apply y/z only to Spine (joint 6, uses thorax channels)
+        # which has thorax_z negatively correlated with pelvis yaw (counter-rotation).
+        # Joint 3 (Torso, uses spine channels) has spine_z +0.97 correlated with pelvis
+        # yaw — would amplify rotation, so we skip it.
+        if (spine_3axis and smpl_idx in (3, 6)) or (counter_rotation and smpl_idx == 6):
             # Read y, z in addition to x (already `vals`) and compose as extrinsic XYZ Euler
             # (scipy upper-case "XYZ" = extrinsic, matching PiG Cardan convention).
             # For midline joints (side=="any"), PiG reports left/right with opposite y,z signs
@@ -875,6 +879,13 @@ def convert_trial(f, trial_path, fps_in=100, fps_out=30, baseline_s=0.0, spine_3
                 for _k in ("H_L", "T_L", "H_R", "T_R"):
                     anchors[_k] = anchors[_k][:, _swap]
 
+                # Lift heel anchors so the ankle joint sits at anatomical height above heel
+                # ground contact. CoP is at z≈0; ankle bone is ~7cm above heel.
+                _ankle_z_offset = float(foot_ik_kwargs.get("ankle_z_offset", 0.07))
+                if _ankle_z_offset != 0.0:
+                    anchors["H_L"][:, 2] += _ankle_z_offset
+                    anchors["H_R"][:, 2] += _ankle_z_offset
+
                 ik_active_either = anchors["ik_active_L"] | anchors["ik_active_R"]
                 trans_zup_corrected = trans_zup_ik.copy()
                 pose_aa_corrected = pose_aa_local.copy()
@@ -1097,6 +1108,10 @@ def main():
                         help="Subtract standing-mean baseline computed from first N seconds of each trial. 0 = off.")
     parser.add_argument("--spine_3axis", action="store_true",
                         help="Map all three PiG spine/thorax axes (x,y,z) to SMPL instead of sagittal only.")
+    parser.add_argument("--counter_rotation", action="store_true",
+                        help="Add y,z thorax channels to Spine joint (6) ONLY for chest counter-rotation. "
+                             "Skips Torso (joint 3) because spine_z is +0.97 correlated with pelvis yaw "
+                             "(would amplify rotation). Use this if --spine_3axis makes chest wobble worse.")
     parser.add_argument("--upper_body", action="store_true",
                         help="Map PiG neck→SMPL joint 12 and head→SMPL joint 15 (instead of leaving them identity).")
     parser.add_argument("--elbow_offset_deg", type=float, default=0.0,
@@ -1139,6 +1154,10 @@ def main():
                         help="Max scipy least_squares function evaluations per frame (≈ outer iter × 22 for 21-DoF finite-diff).")
     parser.add_argument("--foot_ik_bounds_deg", type=float, default=20.0,
                         help="Joint angle bounds: measured ± this (degrees).")
+    parser.add_argument("--foot_ik_ankle_z_offset", type=float, default=0.07,
+                        help="Vertical offset (m) added to heel anchor Z so the ankle joint sits "
+                             "above the heel ground contact. Default 0.07 ≈ anatomical ankle height. "
+                             "Set 0.0 to disable.")
     args = parser.parse_args()
 
     f = h5py.File(args.h5, "r")
@@ -1181,7 +1200,7 @@ def main():
                     trial_path = f"{subj}/{task}/{level}/{trial}"
                     print(f"Processing: {trial_path}")
 
-                    result = convert_trial(f, trial_path, fps_in, args.fps_out, baseline_s=args.baseline_s, spine_3axis=args.spine_3axis, upper_body=args.upper_body, elbow_offset_deg=args.elbow_offset_deg, pelvis_obliq_scale=args.pelvis_obliq_scale, pelvis_lat_scale=args.pelvis_lat_scale, stance_anchor_ip=args.stance_anchor_ip, stance_anchor_source=args.stance_anchor_source, foot_ik=args.foot_ik, foot_ik_kwargs={"pitch_threshold_deg": args.foot_ik_pitch_threshold_deg, "anchor_weight": args.foot_ik_anchor_weight, "joint_reg_weight": args.foot_ik_joint_reg_weight, "smoothness_weight": args.foot_ik_smoothness_weight, "pelvis_reg_weight": args.foot_ik_pelvis_reg_weight, "max_nfev": args.foot_ik_max_nfev, "bounds_deg": args.foot_ik_bounds_deg, "lr": args.foot_ik_lr, "max_iter": args.foot_ik_max_iter, "bound_weight": args.foot_ik_bound_weight})
+                    result = convert_trial(f, trial_path, fps_in, args.fps_out, baseline_s=args.baseline_s, spine_3axis=args.spine_3axis, counter_rotation=args.counter_rotation, upper_body=args.upper_body, elbow_offset_deg=args.elbow_offset_deg, pelvis_obliq_scale=args.pelvis_obliq_scale, pelvis_lat_scale=args.pelvis_lat_scale, stance_anchor_ip=args.stance_anchor_ip, stance_anchor_source=args.stance_anchor_source, foot_ik=args.foot_ik, foot_ik_kwargs={"pitch_threshold_deg": args.foot_ik_pitch_threshold_deg, "anchor_weight": args.foot_ik_anchor_weight, "joint_reg_weight": args.foot_ik_joint_reg_weight, "smoothness_weight": args.foot_ik_smoothness_weight, "pelvis_reg_weight": args.foot_ik_pelvis_reg_weight, "max_nfev": args.foot_ik_max_nfev, "bounds_deg": args.foot_ik_bounds_deg, "lr": args.foot_ik_lr, "max_iter": args.foot_ik_max_iter, "bound_weight": args.foot_ik_bound_weight, "ankle_z_offset": args.foot_ik_ankle_z_offset})
                     if result is None:
                         skipped += 1
                         continue
