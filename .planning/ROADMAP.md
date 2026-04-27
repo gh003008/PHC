@@ -19,6 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Mechanism Evaluation And Evidence Package** - Report pain/load reduction, locomotion competence, side-specificity, and diagnostics with v1.0 scope boundaries.
 - [x] **Phase 6: Main Checkpoint Preservation And Smoke Evaluation** - Preserve the current main checkpoint and verify the trained policy can run in evaluation mode.
 - [x] **Phase 7: Main Run Evidence Extraction** - Extract and package evidence from the main condition run before interpreting mechanism quality.
+- [x] **Phase 07.1: Pain Metric Scalar Logging Instrumentation (INSERTED)** - Promote PHC-Pain-v1 env extras into training scalar logs before ablations.
 - [ ] **Phase 8: Minimal Ablation Runs** - Run the smallest condition matrix needed to separate pain observability and reward pressure.
 
 ## Phase Details
@@ -102,6 +103,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 5. Mechanism Evaluation And Evidence Package | 1/1 | Complete | 2026-04-27 |
 | 6. Main Checkpoint Preservation And Smoke Evaluation | 1/1 | Complete | 2026-04-27 |
 | 7. Main Run Evidence Extraction | 1/1 | Complete | 2026-04-27 |
+| 07.1. Pain Metric Scalar Logging Instrumentation | 1/1 | Complete | 2026-04-28 |
 | 8. Minimal Ablation Runs | 0/1 | Blocked | - |
 
 ### Phase 6: Main Checkpoint Preservation And Smoke Evaluation
@@ -124,11 +126,21 @@ Plans:
 Plans:
 - [x] 07-01-PLAN.md
 
+### Phase 07.1: Pain Metric Scalar Logging Instrumentation (INSERTED)
+
+**Goal:** Promote PHC-Pain-v1 env extras into training scalar logs before ablations.
+**Requirements**: PAIN-04, EVAL-01, EVAL-03
+**Depends on:** Phase 7
+**Plans:** 1 plan
+
+Plans:
+- [x] 07.1-01-PLAN.md
+
 ### Phase 8: Minimal Ablation Runs
 
 **Goal:** Run the smallest condition matrix needed to separate pain observability and reward pressure.
 **Requirements**: ABL-01, ABL-02, ABL-03, EVAL-01, EVAL-02, EVAL-03
-**Depends on:** Phase 7
+**Depends on:** Phase 07.1
 **Plans:** 1 plan
 
 Plans:

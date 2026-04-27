@@ -598,7 +598,45 @@ class CommonAgent(a2c_continuous.A2CAgent):
 
         return advantages
 
+    def _accumulate_env_info_scalars(self, accumulator, infos):
+        if not isinstance(infos, dict):
+            return accumulator
+
+        for key, value in infos.items():
+            if not key.startswith("pain_v1_"):
+                continue
+
+            scalar = self._to_loggable_scalar(value)
+            if scalar is None:
+                continue
+
+            if key not in accumulator:
+                accumulator[key] = [0.0, 0]
+            accumulator[key][0] += scalar
+            accumulator[key][1] += 1
+
+        return accumulator
+
+    def _finalize_env_info_scalars(self, accumulator):
+        return {
+            key: total / max(count, 1)
+            for key, (total, count) in accumulator.items()
+        }
+
+    def _to_loggable_scalar(self, value):
+        if isinstance(value, bool):
+            return float(value)
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            return float(value)
+        if torch.is_tensor(value) and value.numel() == 1:
+            return float(value.detach().cpu().item())
+        if isinstance(value, np.ndarray) and value.size == 1:
+            return float(value.reshape(-1)[0])
+        return None
+
     def _record_train_batch_info(self, batch_dict, train_info):
+        if "env_info_scalars" in batch_dict:
+            train_info["env_info_scalars"] = batch_dict["env_info_scalars"]
         return
     
     def _assemble_train_info(self, train_info, frame):
@@ -621,6 +659,9 @@ class CommonAgent(a2c_continuous.A2CAgent):
                     "loss/kl": torch_ext.mean_list(train_info['kl']).item(),
                 }
             )
+
+        if "env_info_scalars" in train_info:
+            train_info_dict.update(train_info["env_info_scalars"])
         
         return train_info_dict
 

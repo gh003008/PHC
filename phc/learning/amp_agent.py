@@ -263,6 +263,7 @@ class AMPAgent(common_agent.CommonAgent):
         done_indices = []
         terminated_flags = torch.zeros(self.num_actors, device=self.device)
         reward_raw = torch.zeros(1, device=self.device)
+        env_info_scalars = {}
 
         for n in range(self.horizon_length):
             
@@ -296,6 +297,7 @@ class AMPAgent(common_agent.CommonAgent):
                 self.experience_buffer.update_data_rnn('states', indices[::self.num_agents], play_mask[::self.num_agents] // self.num_agents, self.obs['states'])
 
             self.obs, rewards, self.dones, infos = self.env_step(res_dict['actions'])
+            self._accumulate_env_info_scalars(env_info_scalars, infos)
             
                 
             shaped_rewards = self.rewards_shaper(rewards)
@@ -371,6 +373,7 @@ class AMPAgent(common_agent.CommonAgent):
         batch_dict['rnn_masks'] = mb_rnn_masks # ZL: this should be swap and flattened, but it's all ones for now
         batch_dict['terminated_flags'] = terminated_flags
         batch_dict['reward_raw'] =reward_raw / self.horizon_length
+        batch_dict['env_info_scalars'] = self._finalize_env_info_scalars(env_info_scalars)
         
         batch_dict['played_frames'] = n * self.num_actors * self.num_agents
         batch_dict['step_time'] = step_time
@@ -392,6 +395,7 @@ class AMPAgent(common_agent.CommonAgent):
         update_list = self.update_list
         terminated_flags = torch.zeros(self.num_actors, device=self.device)
         reward_raw = torch.zeros(1, device=self.device)
+        env_info_scalars = {}
         for n in range(self.horizon_length):
 
             self.obs = self.env_reset(done_indices)
@@ -410,6 +414,7 @@ class AMPAgent(common_agent.CommonAgent):
                 self.experience_buffer.update_data('states', n, self.obs['states'])
             
             self.obs, rewards, self.dones, infos = self.env_step(res_dict['actions'])
+            self._accumulate_env_info_scalars(env_info_scalars, infos)
                 
             shaped_rewards = self.rewards_shaper(rewards)
             self.experience_buffer.update_data('rewards', n, shaped_rewards)
@@ -465,6 +470,7 @@ class AMPAgent(common_agent.CommonAgent):
         batch_dict['returns'] = a2c_common.swap_and_flatten01(mb_returns)
         batch_dict['terminated_flags'] = terminated_flags
         batch_dict['reward_raw'] =reward_raw / self.horizon_length
+        batch_dict['env_info_scalars'] = self._finalize_env_info_scalars(env_info_scalars)
         batch_dict['played_frames'] = self.batch_size
         
         for k, v in amp_rewards.items():
