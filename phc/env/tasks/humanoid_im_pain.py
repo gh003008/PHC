@@ -229,6 +229,20 @@ class HumanoidImPainV1(HumanoidImPain):
             "env.pain.active_knee_side must be one of {'left', 'right', 'none'}; "
             f"got {self._active_knee_side!r}"
         )
+        knee_cfg = pc.get("knee_mechanism", {})
+        self._knee_sensitivity = {
+            "left": float(knee_cfg.get("left_sensitivity", 1.0)),
+            "right": float(knee_cfg.get("right_sensitivity", 1.0)),
+        }
+        self._knee_threshold = {
+            "left": float(knee_cfg.get("left_threshold", pc.get("pain_threshold", 0.10))),
+            "right": float(knee_cfg.get("right_threshold", pc.get("pain_threshold", 0.10))),
+        }
+        self._knee_w_torque = float(knee_cfg.get("w_torque", 0.50))
+        self._knee_w_flex = float(knee_cfg.get("w_flex", 0.25))
+        self._knee_w_rom = float(knee_cfg.get("w_rom", 0.25))
+        self._knee_w_work = float(knee_cfg.get("w_work", 0.10))
+        self._knee_memory_alpha = float(knee_cfg.get("memory_alpha", 0.05))
 
         super().__init__(cfg, sim_params, physics_engine, device_type, device_id, headless)
 
@@ -236,6 +250,15 @@ class HumanoidImPainV1(HumanoidImPain):
             (self.num_envs, len(self._pain_body_channels)), device=self.device
         )
         self.pain_body_memory = torch.zeros_like(self.pain_body_state)
+        self.pain_body_drive = torch.zeros_like(self.pain_body_state)
+        self.knee_load_proxy = {
+            "left": torch.zeros((self.num_envs,), device=self.device),
+            "right": torch.zeros((self.num_envs,), device=self.device),
+        }
+        self.knee_drive = {
+            "left": torch.zeros((self.num_envs,), device=self.device),
+            "right": torch.zeros((self.num_envs,), device=self.device),
+        }
         self._pain_channel_to_idx = {
             name: i for i, name in enumerate(self._pain_body_channels)
         }
@@ -251,6 +274,7 @@ class HumanoidImPainV1(HumanoidImPain):
                 f"active knee channel {self._active_knee_channel!r} is not in "
                 f"pain obs channels {self._pain_body_channels!r}"
             )
+        self._knee_dof_idx = self._build_knee_dof_idx()
 
     def get_obs_size(self):
         return super().get_obs_size() + getattr(self, "_pain_obs_dim", 0)
@@ -278,6 +302,107 @@ class HumanoidImPainV1(HumanoidImPain):
         if self._pain_obs_include_memory:
             parts.append(self.pain_body_memory[env_ids])
         return torch.cat(parts, dim=-1)
+
+    def _build_knee_dof_idx(self):
+        return {
+            "left": self._dof_names.index("L_Knee") * 3 + 1,
+            "right": self._dof_names.index("R_Knee") * 3 + 1,
+        }
+
+    def _compute_knee_proxy(self, side):
+        idx = self._knee_dof_idx[side]
+        q = self._dof_pos[:, idx]
+        dq = self._dof_vel[:, idx]
+        tau = self.dof_force_tensor[:, idx]
+
+        tau_limit = torch.clamp(self.torque_limits[idx] * self._p_tau_scale, min=1.0)
+        torque_proxy = torch.abs(tau) / (tau_limit + 1e-6)
+        flex_proxy = torch.relu(tau) / (tau_limit + 1e-6)
+
+        q_lo = self.dof_limits_lower[idx:idx + 1]
+        q_hi = self.dof_limits_upper[idx:idx + 1]
+        rom_proxy = compute_joint_limit_pain(
+            q.unsqueeze(-1), q_lo, q_hi, self._p_margin
+        ).squeeze(-1)
+
+        work_proxy = torch.relu(tau * dq) / max(self._p_power_ref, 1e-6)
+
+        load_proxy = (
+            self._knee_w_torque * torque_proxy
+            + self._knee_w_flex * flex_proxy
+            + self._knee_w_rom * rom_proxy
+            + self._knee_w_work * work_proxy
+        )
+        return load_proxy, {
+            "torque": torque_proxy,
+            "flex": flex_proxy,
+            "rom": rom_proxy,
+            "work": work_proxy,
+        }
+
+    def _update_pain_buffers(self):
+        if not self.pain_enabled or self.pain_mode == "off":
+            return
+
+        super()._update_pain_buffers()
+        if self._pain_obs_dim == 0 or self._active_knee_side == "none":
+            return
+
+        for side in ("left", "right"):
+            load_proxy, components = self._compute_knee_proxy(side)
+            self.knee_load_proxy[side][:] = load_proxy
+            drive = self._knee_sensitivity[side] * torch.relu(
+                load_proxy - self._knee_threshold[side]
+            )
+            if side != self._active_knee_side:
+                drive = torch.zeros_like(drive)
+            self.knee_drive[side][:] = drive
+
+            channel = f"{side}_knee"
+            channel_idx = self._pain_channel_to_idx.get(channel)
+            if channel_idx is None:
+                continue
+
+            self.pain_body_drive[:, channel_idx] = drive
+            self.pain_body_state[:, channel_idx] = torch.clamp(
+                self.pain_body_state[:, channel_idx] * (1.0 - self._p_decay)
+                + self._p_rise * drive,
+                0.0,
+                self._p_cap,
+            )
+            self.pain_body_memory[:, channel_idx] = (
+                (1.0 - self._knee_memory_alpha) * self.pain_body_memory[:, channel_idx]
+                + self._knee_memory_alpha * self.pain_body_state[:, channel_idx]
+            )
+
+            prefix = f"pain_v1_{side}_knee"
+            self.extras[f"{prefix}_load"] = float(load_proxy.mean().item())
+            self.extras[f"{prefix}_drive"] = float(drive.mean().item())
+            self.extras[f"{prefix}_state"] = float(self.pain_body_state[:, channel_idx].mean().item())
+            for name, value in components.items():
+                self.extras[f"{prefix}_{name}"] = float(value.mean().item())
+
+        self.extras["pain_v1_mechanical_proxy_note"] = (
+            "synthetic thresholded medial tibiofemoral knee load proxy; "
+            "medial KAM/contact force is unavailable in PHC tensors"
+        )
+
+    def _compute_reward(self, actions):
+        HumanoidIm._compute_reward(self, actions)
+        if not self.pain_enabled:
+            return
+
+        self._update_pain_buffers()
+        if self.pain_mode in ("reward_only", "guard_and_reward"):
+            if self._active_knee_channel is not None:
+                idx = self._pain_channel_to_idx[self._active_knee_channel]
+                affected_pain = self.pain_body_state[:, idx]
+            else:
+                affected_pain = torch.zeros((self.num_envs,), device=self.device)
+            self.rew_buf[:] = self.rew_buf[:] - self._p_lambda * affected_pain
+            self.extras["pain_v1_reward_cost_mean"] = float(
+                (self._p_lambda * affected_pain).mean().item()
+            )
 
     def _compute_observations(self, env_ids=None):
         if env_ids is None:
@@ -322,3 +447,7 @@ class HumanoidImPainV1(HumanoidImPain):
         if hasattr(self, "pain_body_state"):
             self.pain_body_state[env_ids] = 0
             self.pain_body_memory[env_ids] = 0
+            self.pain_body_drive[env_ids] = 0
+            for side in ("left", "right"):
+                self.knee_load_proxy[side][env_ids] = 0
+                self.knee_drive[side][env_ids] = 0

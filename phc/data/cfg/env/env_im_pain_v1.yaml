@@ -65,6 +65,17 @@ pain:
   use_external_contact: True
   lambda_p: 0.05
 
+  knee_mechanism:
+    left_sensitivity: 0.0       # v1.0 active side is configured explicitly
+    right_sensitivity: 1.0
+    left_threshold: 0.30
+    right_threshold: 0.30
+    w_torque: 0.50
+    w_flex: 0.25
+    w_rom: 0.25
+    w_work: 0.10
+    memory_alpha: 0.05
+
   obs:
     enabled: True
     include_memory: True

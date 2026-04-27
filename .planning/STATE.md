@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** Show that a pain-conditioned PHC controller can reduce synthetic unilateral knee pain/load without locomotion collapse, and that the effect is side-specific.
-**Current focus:** Phase 2 - Synthetic Pain And Reward Mechanism
+**Current focus:** Phase 3 - Expanded-Observation Checkpoint Adaptation
 
 ## Current Position
 
-Phase: 2 of 5 (Synthetic Pain And Reward Mechanism)
+Phase: 3 of 5 (Expanded-Observation Checkpoint Adaptation)
 Plan: 0 of TBD in current phase
 Status: Ready to plan
-Last activity: 2026-04-27 - Completed Phase 1 v1 task and pain observation contract
+Last activity: 2026-04-27 - Completed Phase 2 synthetic knee pain and reward mechanism
 
-Progress: [██░░░░░░░░] 20%
+Progress: [████░░░░░░] 40%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
+- Total plans completed: 2
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -28,9 +28,10 @@ Progress: [██░░░░░░░░] 20%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | Phase 1 | 1 | N/A | N/A |
+| Phase 2 | 1 | N/A | N/A |
 
 **Recent Trend:**
-- Last 5 plans: Phase 1 plan 01-01 complete
+- Last 5 plans: Phase 1 plan 01-01 complete; Phase 2 plan 02-01 complete
 - Trend: N/A
 
 *Updated after each plan completion*
@@ -48,6 +49,8 @@ Recent decisions affecting current work:
 - Main mechanism claim must use reward-only pain cost with action guard off.
 - Phase 1 chose a distinct `HumanoidImPainV1` subclass and a 9-channel
   body-part pain map with current state plus memory.
+- Phase 2 defined v1.0 knee pain as a synthetic thresholded mechanical proxy
+  using available torque/ROM/work tensors and reward-only affected-knee cost.
 
 ### Pending Todos
 

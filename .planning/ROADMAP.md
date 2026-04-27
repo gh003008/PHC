@@ -13,7 +13,7 @@ This v1.0 roadmap proves the synthetic unilateral medial tibiofemoral knee pain 
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: V1 Task And Pain Observation Contract** - Create the explicit v1 task boundary and body-part pain observation schema.
-- [ ] **Phase 2: Synthetic Pain And Reward Mechanism** - Compute unilateral knee pain drive/state and wire reward-only pain cost for the main experiment.
+- [x] **Phase 2: Synthetic Pain And Reward Mechanism** - Compute unilateral knee pain drive/state and wire reward-only pain cost for the main experiment.
 - [ ] **Phase 3: Expanded-Observation Checkpoint Adaptation** - Load pretrained PHC checkpoints into the expanded observation policy while preserving initial motor-prior behavior.
 - [ ] **Phase 4: Training Conditions And Ablations** - Run the main condition plus required pain-observation, pain-reward, and left/right impairment ablations.
 - [ ] **Phase 5: Mechanism Evaluation And Evidence Package** - Report pain/load reduction, locomotion competence, side-specificity, and diagnostics with v1.0 scope boundaries.
@@ -41,7 +41,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Unavailable mechanical proxy terms are explicitly logged as unavailable.
   4. The main training reward includes affected-knee pain cost with action guard off.
   5. Any guard-enabled run is visibly separated as fallback/debug and cannot be confused with main evidence.
-**Plans**: TBD
+**Plans**: 02-01-PLAN.md
 
 ### Phase 3: Expanded-Observation Checkpoint Adaptation
 **Goal**: Pretrained PHC policies initialize into the expanded pain-observation policy without destroying the motor prior.
@@ -93,7 +93,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. V1 Task And Pain Observation Contract | 1/1 | Complete | 2026-04-27 |
-| 2. Synthetic Pain And Reward Mechanism | 0/TBD | Not started | - |
+| 2. Synthetic Pain And Reward Mechanism | 1/1 | Complete | 2026-04-27 |
 | 3. Expanded-Observation Checkpoint Adaptation | 0/TBD | Not started | - |
 | 4. Training Conditions And Ablations | 0/TBD | Not started | - |
 | 5. Mechanism Evaluation And Evidence Package | 0/TBD | Not started | - |
