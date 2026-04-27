@@ -33,7 +33,7 @@ from phc.env.tasks.humanoid_im import HumanoidIm
 from phc.env.tasks.humanoid_im_getup import HumanoidImGetup
 from phc.env.tasks.humanoid_im_mcp import HumanoidImMCP
 from phc.env.tasks.humanoid_im_mcp_getup import HumanoidImMCPGetup
-from phc.env.tasks.humanoid_im_pain import HumanoidImPain
+from phc.env.tasks.humanoid_im_pain import HumanoidImPain, HumanoidImPainV1
 from phc.env.tasks.vec_task_wrappers import VecTaskPythonWrapper
 from phc.env.tasks.humanoid_im_demo import HumanoidImDemo
 from phc.env.tasks.humanoid_im_mcp_demo import HumanoidImMCPDemo

@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** Show that a pain-conditioned PHC controller can reduce synthetic unilateral knee pain/load without locomotion collapse, and that the effect is side-specific.
-**Current focus:** Phase 1 - V1 Task And Pain Observation Contract
+**Current focus:** Phase 2 - Synthetic Pain And Reward Mechanism
 
 ## Current Position
 
-Phase: 1 of 5 (V1 Task And Pain Observation Contract)
+Phase: 2 of 5 (Synthetic Pain And Reward Mechanism)
 Plan: 0 of TBD in current phase
 Status: Ready to plan
-Last activity: 2026-04-27 - Initialized v1.0 roadmap from ingested PHC-Pain-v1 mechanism design spec
+Last activity: 2026-04-27 - Completed Phase 1 v1 task and pain observation contract
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
+- Total plans completed: 1
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -27,10 +27,10 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| Phase 1 | 1 | N/A | N/A |
 
 **Recent Trend:**
-- Last 5 plans: N/A
+- Last 5 plans: Phase 1 plan 01-01 complete
 - Trend: N/A
 
 *Updated after each plan completion*
@@ -46,6 +46,8 @@ Recent decisions affecting current work:
 - Use body-map architecture with knee-only activation.
 - Keep v1.1 one-patient parameter ID, v1.2 held-out validation, and v1.3 counterfactual intervention as future scope.
 - Main mechanism claim must use reward-only pain cost with action guard off.
+- Phase 1 chose a distinct `HumanoidImPainV1` subclass and a 9-channel
+  body-part pain map with current state plus memory.
 
 ### Pending Todos
 

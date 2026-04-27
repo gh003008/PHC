@@ -194,3 +194,131 @@ class HumanoidImPain(HumanoidIm):
             ):
                 buf[env_ids] = 0
             self.pain_scalar[env_ids] = 0
+
+
+class HumanoidImPainV1(HumanoidImPain):
+    """PHC-Pain-v1 task with body-part pain observation.
+
+    v1 intentionally changes the observation contract, so it lives in a
+    distinct task class instead of modifying the v0 checkpoint-compatible task.
+    Phase 1 only exposes the body-map observation contract; later phases own
+    the unilateral knee pain drive and reward mechanism.
+    """
+
+    DEFAULT_PAIN_CHANNELS = (
+        "left_hip", "right_hip",
+        "left_knee", "right_knee",
+        "left_ankle", "right_ankle",
+        "back",
+        "left_foot", "right_foot",
+    )
+
+    def __init__(self, cfg, sim_params, physics_engine, device_type, device_id, headless):
+        pc = cfg["env"].get("pain", {})
+        obs_cfg = pc.get("obs", {})
+        self._pain_obs_enabled = bool(obs_cfg.get("enabled", pc.get("append_to_obs", False)))
+        self._pain_obs_include_memory = bool(obs_cfg.get("include_memory", True))
+        self._pain_body_channels = tuple(obs_cfg.get("channels", self.DEFAULT_PAIN_CHANNELS))
+        self._pain_obs_values_per_channel = 1 + int(self._pain_obs_include_memory)
+        self._pain_obs_dim = (
+            len(self._pain_body_channels) * self._pain_obs_values_per_channel
+            if self._pain_obs_enabled else 0
+        )
+        self._active_knee_side = str(pc.get("active_knee_side", "right"))
+        assert self._active_knee_side in ("left", "right", "none"), (
+            "env.pain.active_knee_side must be one of {'left', 'right', 'none'}; "
+            f"got {self._active_knee_side!r}"
+        )
+
+        super().__init__(cfg, sim_params, physics_engine, device_type, device_id, headless)
+
+        self.pain_body_state = torch.zeros(
+            (self.num_envs, len(self._pain_body_channels)), device=self.device
+        )
+        self.pain_body_memory = torch.zeros_like(self.pain_body_state)
+        self._pain_channel_to_idx = {
+            name: i for i, name in enumerate(self._pain_body_channels)
+        }
+        self._active_knee_channel = (
+            f"{self._active_knee_side}_knee"
+            if self._active_knee_side in ("left", "right") else None
+        )
+        if (
+            self._active_knee_channel is not None
+            and self._active_knee_channel not in self._pain_channel_to_idx
+        ):
+            raise ValueError(
+                f"active knee channel {self._active_knee_channel!r} is not in "
+                f"pain obs channels {self._pain_body_channels!r}"
+            )
+
+    def get_obs_size(self):
+        return super().get_obs_size() + getattr(self, "_pain_obs_dim", 0)
+
+    def get_pain_obs_size(self):
+        return self._pain_obs_dim
+
+    def get_pain_obs_metadata(self):
+        return {
+            "channels": list(self._pain_body_channels),
+            "values_per_channel": self._pain_obs_values_per_channel,
+            "include_memory": self._pain_obs_include_memory,
+            "active_knee_side": self._active_knee_side,
+            "active_knee_channel": self._active_knee_channel,
+            "obs_dim": self._pain_obs_dim,
+        }
+
+    def _compute_pain_obs(self, env_ids):
+        if self._pain_obs_dim == 0:
+            return torch.zeros((env_ids.shape[0], 0), device=self.device)
+        if not hasattr(self, "pain_body_state"):
+            return torch.zeros((env_ids.shape[0], self._pain_obs_dim), device=self.device)
+
+        parts = [self.pain_body_state[env_ids]]
+        if self._pain_obs_include_memory:
+            parts.append(self.pain_body_memory[env_ids])
+        return torch.cat(parts, dim=-1)
+
+    def _compute_observations(self, env_ids=None):
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs).to(self.device)
+
+        self_obs = self._compute_humanoid_obs(env_ids)
+        self.self_obs_buf[env_ids] = self_obs
+
+        if self._enable_task_obs:
+            task_obs = self._compute_task_obs(env_ids)
+            obs = torch.cat([self_obs, task_obs], dim=-1)
+        else:
+            obs = self_obs
+
+        pain_obs = self._compute_pain_obs(env_ids)
+        if pain_obs.shape[-1] > 0:
+            obs = torch.cat([obs, pain_obs], dim=-1)
+
+        if self.add_obs_noise and not flags.test:
+            obs = obs + torch.randn_like(obs) * 0.1
+
+        if self.obs_v == 4:
+            B, N = obs.shape
+            sums = self.obs_buf[env_ids, 0:self.past_track_steps].abs().sum(dim=1)
+            zeros = sums == 0
+            nonzero = ~zeros
+            obs_slice = self.obs_buf[env_ids]
+            obs_slice[zeros] = torch.tile(obs[zeros], (1, self.past_track_steps))
+            obs_slice[nonzero] = torch.cat([obs_slice[nonzero, N:], obs[nonzero]], dim=-1)
+            self.obs_buf[env_ids] = obs_slice
+        else:
+            self.obs_buf[env_ids] = obs
+
+        self.extras["pain_obs_dim"] = self._pain_obs_dim
+        self.extras["pain_obs_channels"] = list(self._pain_body_channels)
+        self.extras["pain_active_knee_side"] = self._active_knee_side
+
+        return obs
+
+    def _reset_env_tensors(self, env_ids):
+        super()._reset_env_tensors(env_ids)
+        if hasattr(self, "pain_body_state"):
+            self.pain_body_state[env_ids] = 0
+            self.pain_body_memory[env_ids] = 0

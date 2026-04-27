@@ -1,0 +1,106 @@
+# PHC-Pain-v1 env config.
+# v1 intentionally changes the observation contract by selecting
+# HumanoidImPainV1 and appending body-part pain map state/memory.
+task: HumanoidImPainV1
+project_name: "PHC"
+notes: "pain v1 synthetic unilateral medial knee mechanism proof"
+motion_file: ""
+num_envs: 3072
+env_spacing: 5
+episode_length: 300
+is_flag_run: False
+enable_debug_vis: False
+
+fut_tracks: False
+self_obs_v: 1
+obs_v: 6
+auto_pmcp: False
+auto_pmcp_soft: True
+
+has_pnn: True
+fitting: False
+num_prim: 4
+training_prim: 0
+actors_to_load: 0
+has_lateral: False
+models: []
+
+zero_out_far: False
+zero_out_far_train: False
+getup_udpate_epoch: 78750
+cycle_motion: False
+hard_negative: False
+min_length: 5
+
+kp_scale: 1
+power_reward: True
+
+shape_resampling_interval: 500
+
+control_mode: "isaac_pd"
+power_scale: 1.0
+controlFrequencyInv: 2
+stateInit: "Random"
+hybridInitProb: 0.5
+numAMPObsSteps: 10
+
+local_root_obs: True
+root_height_obs: True
+key_bodies: ["R_Ankle", "L_Ankle", "R_Wrist", "L_Wrist"]
+contact_bodies: ["R_Ankle", "L_Ankle", "R_Toe", "L_Toe"]
+reset_bodies: ['Pelvis', 'L_Hip', 'L_Knee', 'R_Hip', 'R_Knee', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
+terminationHeight: 0.15
+enableEarlyTermination: True
+terminationDistance: 0.25
+
+numTrajSamples: 3
+trajSampleTimestepInv: 3
+enableTaskObs: True
+
+pain:
+  enabled: True
+  mode: "reward_only"
+  append_to_obs: True
+  active_knee_side: "right"     # right | left | none
+  use_external_contact: True
+  lambda_p: 0.05
+
+  obs:
+    enabled: True
+    include_memory: True
+    channels:
+      - left_hip
+      - right_hip
+      - left_knee
+      - right_knee
+      - left_ankle
+      - right_ankle
+      - back
+      - left_foot
+      - right_foot
+
+  w_limit: 1.0
+  w_torque: 0.35
+  w_power: 0.15
+  w_contact: 0.50
+
+  joint_limit_margin_ratio: 0.15
+  torque_ref_scale: 0.50
+  power_ref: 5.0
+  contact_force_ref: 150.0
+  pain_threshold: 0.10
+  pain_cap: 3.0
+
+  rise_alpha: 0.25
+  decay_alpha: 0.02
+
+  guard_gain: 0.60
+  max_guard: 0.75
+
+  log_joint_pain: True
+  log_contact_pain: True
+
+plane:
+  staticFriction: 1.0
+  dynamicFriction: 1.0
+  restitution: 0.0

@@ -12,7 +12,7 @@ This v1.0 roadmap proves the synthetic unilateral medial tibiofemoral knee pain 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: V1 Task And Pain Observation Contract** - Create the explicit v1 task boundary and body-part pain observation schema.
+- [x] **Phase 1: V1 Task And Pain Observation Contract** - Create the explicit v1 task boundary and body-part pain observation schema.
 - [ ] **Phase 2: Synthetic Pain And Reward Mechanism** - Compute unilateral knee pain drive/state and wire reward-only pain cost for the main experiment.
 - [ ] **Phase 3: Expanded-Observation Checkpoint Adaptation** - Load pretrained PHC checkpoints into the expanded observation policy while preserving initial motor-prior behavior.
 - [ ] **Phase 4: Training Conditions And Ablations** - Run the main condition plus required pain-observation, pain-reward, and left/right impairment ablations.
@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The v1 task observation includes the original PHC observation plus the full body-part pain map.
   3. Left-knee and right-knee synthetic impairment can each be activated while all non-target channels remain present and inactive.
   4. A human inspecting logged observation metadata can verify current pain state and short temporal memory per channel.
-**Plans**: TBD
+**Plans**: 01-01-PLAN.md
 
 ### Phase 2: Synthetic Pain And Reward Mechanism
 **Goal**: The v1 task produces a defensible unilateral knee pain signal and uses it as reward-only training pressure.
@@ -92,7 +92,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. V1 Task And Pain Observation Contract | 0/TBD | Not started | - |
+| 1. V1 Task And Pain Observation Contract | 1/1 | Complete | 2026-04-27 |
 | 2. Synthetic Pain And Reward Mechanism | 0/TBD | Not started | - |
 | 3. Expanded-Observation Checkpoint Adaptation | 0/TBD | Not started | - |
 | 4. Training Conditions And Ablations | 0/TBD | Not started | - |
