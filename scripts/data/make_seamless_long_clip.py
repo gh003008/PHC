@@ -15,7 +15,7 @@ SOURCE_PKL = "sample_data/amass_isaac_walking_forward_single.pkl"
 OUT_PKL = "sample_data/amass_walking_kit11_seamless_60s.pkl"
 TARGET_DURATION_S = 60.0
 FPS = 30
-BLEND_W = 5  # frames straddling each loop seam to slerp-blend
+BLEND_W = 2  # frames straddling each loop seam to slerp-blend (small window for tiny pose-mismatch smoothing without creating perceptible smear)
 
 
 def detect_heel_strikes(root_trans, fps=30):
@@ -53,7 +53,10 @@ def slerp_quat(q0, q1, t):
 def smooth_loop_boundaries(out_pq, out_pql, out_aa, cycle_len, n_loops, blend_w):
     """Slerp-blend a window of `blend_w` frames straddling each loop seam.
     Anchors are the unmodified frames just outside the window: pre = boundary - half - 1,
-    post = boundary + (blend_w - half). Modifies arrays in-place."""
+    post = boundary + (blend_w - half). Modifies arrays in-place.
+    blend_w=0 skips blending — cycle endpoints already match at heel-strike pose."""
+    if blend_w == 0:
+        return 0
     half = blend_w // 2
     n_total = out_pq.shape[0]
     seams_blended = 0
@@ -94,36 +97,69 @@ def build_seamless_loop(clip, n_frames_target):
         raise RuntimeError("not enough heel strikes for cycle extraction")
 
     # Full stride = same-foot HS to next same-foot HS = 2 step intervals.
-    # Pick the modal stride length (most-common, robust to outliers like the
-    # acceleration-from-standing first stride and deceleration-to-stop tail
-    # strides which are shorter than steady walking).
+    # Pick stride from steady-walk region (mid-60% of clip) with MINIMUM
+    # within-stride velocity stddev. This selects a stride whose per-frame
+    # velocity is uniform throughout — meaning the cycle endpoints are at
+    # the same dynamic state, so loop seams become naturally smooth.
+    #
+    # Why not just match average v_x? Because the clip's mid-60% spans both
+    # peak-walking (fast, uniform) and deceleration (slow, declining)
+    # regions. The AVERAGE gets pulled to a value that doesn't correspond
+    # to any uniform stride — so a "best-match" stride may straddle the
+    # transition, producing a fast→slow cycle that creates a velocity
+    # discontinuity at every loop seam (the "stop-go" artifact).
     if len(hs) < 3:
         raise RuntimeError("need at least 3 heel strikes for full-stride cycle")
+
+    T = trans.shape[0]
+    t_lo, t_hi = int(T * 0.2), int(T * 0.8)
+
     stride_lengths = np.array([hs[k + 2] - hs[k] for k in range(len(hs) - 2)])
-    # Walking strides are the longest in the clip — deceleration shortens stride
-    # length systematically. Filter to strides >= median (walking-half), then
-    # pick the middle-index candidate (avoids first/last walking strides which
-    # touch acceleration/deceleration boundaries).
-    median_stride = float(np.median(stride_lengths))
-    walking_mask = stride_lengths >= median_stride
-    walking_indices = np.where(walking_mask)[0]
-    if len(walking_indices) < 1:
-        raise RuntimeError("no walking-half strides found")
-    hs_a_idx = int(walking_indices[len(walking_indices) // 2])
+    stride_v_x = np.array([
+        (trans[hs[k + 2] - 1, 0] - trans[hs[k], 0]) / ((hs[k + 2] - hs[k]) / FPS)
+        for k in range(len(hs) - 2)
+    ])
+    # Within-stride velocity stddev: low = uniform walking, high = transition
+    per_frame_dx = np.diff(trans[:, 0], prepend=trans[0, 0])
+    stride_v_std = np.array([
+        np.std(per_frame_dx[hs[k]:hs[k + 2]]) * FPS  # convert to m/s
+        for k in range(len(hs) - 2)
+    ])
+    in_mid60 = (hs[:-2] >= t_lo) & (hs[:-2] + stride_lengths <= t_hi)
+    candidates = np.where(in_mid60)[0]
+    if len(candidates) < 1:
+        candidates = np.arange(len(stride_lengths))
+        print(f"  WARN: no stride entirely in mid-60% [{t_lo},{t_hi}], using all strides")
+
+    # Pick max-SNR stride: |mean v_x| / stddev. High = fast AND uniform.
+    # Min-stddev alone biases toward near-stop strides (zero motion has zero
+    # variance). SNR balances "actually walking" against "uniform within
+    # stride" — picking the stride that's both fast and consistent.
+    stride_snr = np.abs(stride_v_x) / (stride_v_std + 1e-6)
+    hs_a_idx = int(candidates[int(np.argmax(stride_snr[candidates]))])
     hs_b_idx = hs_a_idx + 2
     hs_a, hs_b = hs[hs_a_idx], hs[hs_b_idx]
     cycle_len = hs_b - hs_a
-    print(f"  stride lengths (HS[k]→HS[k+2]): {stride_lengths.tolist()}")
-    print(f"  median stride={median_stride}, walking-half candidates={walking_indices.tolist()}, picked HS[{hs_a_idx}]→HS[{hs_b_idx}]")
-    print(f"  cycle: frames [{hs_a}, {hs_b}) len={cycle_len} ({cycle_len/FPS:.2f}s) — full stride, steady-walk core")
+    print(f"  stride lengths: {stride_lengths.tolist()}")
+    print(f"  stride v_x mean: {[f'{v:.2f}' for v in stride_v_x.tolist()]}")
+    print(f"  stride v_x stddev: {[f'{s:.3f}' for s in stride_v_std.tolist()]} (lower = more uniform)")
+    print(f"  mid-60% candidates [{t_lo},{t_hi}]: {candidates.tolist()}")
+    print(f"  picked HS[{hs_a_idx}]→HS[{hs_b_idx}] (v_x mean={stride_v_x[hs_a_idx]:.3f}, stddev={stride_v_std[hs_a_idx]:.3f}, len={cycle_len})")
+    print(f"  cycle: frames [{hs_a}, {hs_b}) len={cycle_len} ({cycle_len/FPS:.2f}s)")
 
     cycle_pq = pose_quat[hs_a:hs_b].copy()
     cycle_pql = pose_quat_local[hs_a:hs_b].copy()
     cycle_aa = pose_aa[hs_a:hs_b].copy()
     cycle_tr = trans[hs_a:hs_b].copy()
 
+    # cycle_dx is the per-loop forward shift. It must equal the displacement
+    # over cycle_len intervals (= trans[hs_b] - trans[hs_a]), NOT cycle_len-1
+    # intervals (= trans[hs_b-1] - trans[hs_a] = cycle_tr[-1]). Using the
+    # latter duplicates position at every loop seam, producing a zero-velocity
+    # spike that visually reads as "walk-stop-walk-stop".
     cycle_tr -= cycle_tr[0]
-    cycle_dx = cycle_tr[-1] - cycle_tr[0]
+    cycle_dx = (trans[hs_b] - trans[hs_a]).astype(cycle_tr.dtype)
+    cycle_dx[2] = 0   # zero z drift across loops
 
     n_loops = int(np.ceil(n_frames_target / cycle_len))
     out_pq = np.zeros((cycle_len * n_loops, 24, 4), dtype=cycle_pq.dtype)

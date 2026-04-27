@@ -1,16 +1,8 @@
-"""Generate seamless 60s loops for each clip in the 3-clip training pkl.
+"""Generate v8 — 2-clip seamless training pkl (medium08 + medium05 only).
 
-Reuses build_seamless_loop from make_seamless_long_clip.py, applies it to
-each entry of amass_walking_3clips_speedspaced.pkl, and writes a single
-multi-clip pkl where each entry is a 60-second seamless loop.
-
-Output is parallel to the training pkl (same 3 keys, suffixed with
-'_seamless_60s'). Used post-training for demo: feed the policy a
-v_cmd-conditioned seamless reference at any of the 3 walking speeds.
-
-Usage:
-  conda activate phc
-  python scripts/data/make_seamless_motion_set.py
+walking_03 dropped due to source-data jerkiness in upper limb. Result:
+clean 2-clip set with natural speeds 0.97-1.07 m/s (retime ±15% covers
+v_cmd [0.82, 1.23]).
 """
 import os
 import sys
@@ -26,7 +18,8 @@ from make_seamless_long_clip import (  # noqa: E402
 )
 
 SOURCE_PKL = "sample_data/amass_walking_3clips_speedspaced.pkl"
-OUT_PKL = "sample_data/amass_walking_3clips_seamless_60s_v7.pkl"
+OUT_PKL = "sample_data/amass_walking_2clips_seamless_60s_v8.pkl"
+KEEP = ["medium08", "medium05"]
 
 
 def main():
@@ -34,6 +27,9 @@ def main():
     n_frames = int(TARGET_DURATION_S * FPS)
     out = {}
     for name, clip in src.items():
+        if not any(k in name for k in KEEP):
+            print(f"\n=== Skipping {name} (not in KEEP) ===")
+            continue
         T = clip["pose_quat_global"].shape[0]
         print(f"\n=== Processing {name} (T={T} frames) ===")
         seamless = build_seamless_loop(clip, n_frames)
