@@ -1,3 +1,4 @@
+import copy
 import torch
 
 
@@ -13,6 +14,74 @@ def rescale_actions(low, high, action):
     m = (high + low) / 2.0
     scaled_action =  action * d + m
     return scaled_action
+
+def _get_pain_obs_size(player):
+    task = getattr(getattr(player, "env", None), "task", None)
+    if task is not None and hasattr(task, "get_pain_obs_size"):
+        return int(task.get_pain_obs_size())
+    return 0
+
+def _copy_leading_obs_columns(saved_state, target_state):
+    out = copy.deepcopy(saved_state)
+    changed = False
+    for key, saved in saved_state.items():
+        if key not in target_state:
+            continue
+        target = target_state[key]
+        if saved.shape == target.shape:
+            continue
+        if (
+            len(saved.shape) == 2
+            and len(target.shape) == 2
+            and saved.shape[0] == target.shape[0]
+            and saved.shape[1] < target.shape[1]
+        ):
+            expanded = torch.zeros_like(target)
+            expanded[:, : saved.shape[1]].copy_(saved)
+            out[key] = expanded
+            changed = True
+    return out, changed
+
+def _adapt_running_mean_std(saved_state, target_state):
+    out = copy.deepcopy(saved_state)
+    changed = False
+    for key in ("running_mean", "running_var"):
+        if key not in saved_state or key not in target_state:
+            continue
+        saved = saved_state[key]
+        target = target_state[key]
+        if saved.shape == target.shape:
+            continue
+        if len(saved.shape) == 1 and len(target.shape) == 1 and saved.shape[0] < target.shape[0]:
+            fill = 1.0 if key == "running_var" else 0.0
+            expanded = torch.full_like(target, fill)
+            expanded[: saved.shape[0]].copy_(saved)
+            out[key] = expanded
+            changed = True
+    return out, changed
+
+def _adapt_expanded_obs_checkpoint(player, checkpoint):
+    pain_obs_size = _get_pain_obs_size(player)
+    if pain_obs_size <= 0 or "model" not in checkpoint:
+        return checkpoint
+
+    adapted = copy.deepcopy(checkpoint)
+    adapted["model"], changed = _copy_leading_obs_columns(
+        adapted["model"], player.model.state_dict()
+    )
+
+    if player.normalize_input and "running_mean_std" in adapted:
+        adapted["running_mean_std"], stats_changed = _adapt_running_mean_std(
+            adapted["running_mean_std"], player.running_mean_std.state_dict()
+        )
+        changed = changed or stats_changed
+
+    if changed:
+        print(
+            "PHC-Pain-v1 player checkpoint adaptation: copied pretrained "
+            f"observation columns and zero-initialized {pain_obs_size} new pain obs columns."
+        )
+    return adapted
 
 class AMPPlayerContinuous(common_player.CommonPlayer):
     def __init__(self, config):
@@ -62,9 +131,11 @@ class AMPPlayerContinuous(common_player.CommonPlayer):
     #         return current_action
 
     def restore(self, fn):
-        super().restore(fn)
+        checkpoint = _adapt_expanded_obs_checkpoint(self, torch_ext.load_checkpoint(fn))
+        self.model.load_state_dict(checkpoint['model'])
+        if self.normalize_input:
+            self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         if self._normalize_amp_input:
-            checkpoint = torch_ext.load_checkpoint(fn)
             self._amp_input_mean_std.load_state_dict(checkpoint['amp_input_mean_std'])
 
             if self._normalize_input:
@@ -212,9 +283,11 @@ class AMPPlayerDiscrete(common_player.CommonPlayerDiscrete):
     #         return current_action
 
     def restore(self, fn):
-        super().restore(fn)
+        checkpoint = _adapt_expanded_obs_checkpoint(self, torch_ext.load_checkpoint(fn))
+        self.model.load_state_dict(checkpoint['model'])
+        if self.normalize_input:
+            self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         if self._normalize_amp_input:
-            checkpoint = torch_ext.load_checkpoint(fn)
             self._amp_input_mean_std.load_state_dict(checkpoint['amp_input_mean_std'])
 
             if self._normalize_input:
