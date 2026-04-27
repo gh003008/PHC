@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Synthetic Pain And Reward Mechanism** - Compute unilateral knee pain drive/state and wire reward-only pain cost for the main experiment.
 - [x] **Phase 3: Expanded-Observation Checkpoint Adaptation** - Load pretrained PHC checkpoints into the expanded observation policy while preserving initial motor-prior behavior.
 - [x] **Phase 4: Training Conditions And Ablations** - Run the main condition plus required pain-observation, pain-reward, and left/right impairment ablations.
-- [ ] **Phase 5: Mechanism Evaluation And Evidence Package** - Report pain/load reduction, locomotion competence, side-specificity, and diagnostics with v1.0 scope boundaries.
+- [x] **Phase 5: Mechanism Evaluation And Evidence Package** - Report pain/load reduction, locomotion competence, side-specificity, and diagnostics with v1.0 scope boundaries.
 
 ## Phase Details
 
@@ -75,7 +75,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Runs that reduce pain by stopping, freezing, collapse, or non-locomotor posture are labeled as failures.
   4. Evaluator can tell whether effects are side-specific rather than global freezing or bilateral shutdown.
   5. Diagnostic gait evidence is available for interpretation but not promoted to clinical-pattern success claims.
-**Plans**: TBD
+**Plans**: 05-01-PLAN.md
 
 ## Future Scope
 
@@ -96,4 +96,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 2. Synthetic Pain And Reward Mechanism | 1/1 | Complete | 2026-04-27 |
 | 3. Expanded-Observation Checkpoint Adaptation | 1/1 | Complete | 2026-04-27 |
 | 4. Training Conditions And Ablations | 1/1 | Complete | 2026-04-27 |
-| 5. Mechanism Evaluation And Evidence Package | 0/TBD | Not started | - |
+| 5. Mechanism Evaluation And Evidence Package | 1/1 | Complete | 2026-04-27 |
