@@ -64,6 +64,10 @@ Recent decisions affecting current work:
 - Milestone audit status is `tech_debt`: implementation/planning infrastructure
   is complete, but real PPO evidence remains pending.
 
+### Roadmap Evolution
+
+- Phase 6 added: Main Checkpoint Preservation And Smoke Evaluation
+
 ### Pending Todos
 
 - Run the Phase 4 training/ablation matrix on a suitable GPU and populate

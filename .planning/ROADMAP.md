@@ -17,6 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Expanded-Observation Checkpoint Adaptation** - Load pretrained PHC checkpoints into the expanded observation policy while preserving initial motor-prior behavior.
 - [x] **Phase 4: Training Conditions And Ablations** - Run the main condition plus required pain-observation, pain-reward, and left/right impairment ablations.
 - [x] **Phase 5: Mechanism Evaluation And Evidence Package** - Report pain/load reduction, locomotion competence, side-specificity, and diagnostics with v1.0 scope boundaries.
+- [ ] **Phase 6: Main Checkpoint Preservation And Smoke Evaluation** - Preserve the current main checkpoint and verify the trained policy can run in evaluation mode.
 
 ## Phase Details
 
@@ -88,7 +89,7 @@ Preserved from the source design but not part of the active v1.0 milestone:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -97,3 +98,14 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 3. Expanded-Observation Checkpoint Adaptation | 1/1 | Complete | 2026-04-27 |
 | 4. Training Conditions And Ablations | 1/1 | Complete | 2026-04-27 |
 | 5. Mechanism Evaluation And Evidence Package | 1/1 | Complete | 2026-04-27 |
+| 6. Main Checkpoint Preservation And Smoke Evaluation | 0/0 | Not planned | - |
+
+### Phase 6: Main Checkpoint Preservation And Smoke Evaluation
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 5
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 6 to break down)
