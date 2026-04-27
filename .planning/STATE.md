@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 Phase: 5 of 5 (Mechanism Evaluation And Evidence Package)
 Plan: 1 of 1 in current phase
 Status: Complete
-Last activity: 2026-04-27 - Completed Phase 5 evaluation protocol and evidence package
+Last activity: 2026-04-27 - Completed milestone audit with tech debt status
 
 Progress: [██████████] 100%
 
@@ -61,6 +61,8 @@ Recent decisions affecting current work:
 - Phase 5 added the evaluation protocol, evidence template, and JSON-summary
   evaluator. Actual mechanism claims remain blocked until real training metrics
   populate the evidence package.
+- Milestone audit status is `tech_debt`: implementation/planning infrastructure
+  is complete, but real PPO evidence remains pending.
 
 ### Pending Todos
 
