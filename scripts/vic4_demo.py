@@ -195,3 +195,46 @@ def _handle_events(env):
         elif a == "demo_quit":
             print("[demo] quit (ESC)")
             sys.exit(0)
+
+
+ARROW_LEN_AT_VHI = 1.5
+
+
+def _apply_cmd_and_draw(env):
+    """Force env 0's _current_cmd to desired_v_cmd; draw arrow above its head.
+    Env 1 keeps whatever the task assigned (it's hidden 100m away)."""
+    if not hasattr(env, "_current_cmd"):
+        return  # task hasn't set it up yet
+    v = _STATE["desired_v_cmd"]
+    env._current_cmd[0, 0] = v
+    # angular component: this slot family uses cmd_w_range [0,0] so always 0
+    if env._current_cmd.shape[1] >= 2:
+        env._current_cmd[0, 1] = 0.0
+    if env.viewer is None:
+        return
+    env.gym.clear_lines(env.viewer)
+    root = env._humanoid_root_states[0].detach().cpu().numpy()  # [13]
+    pos = root[:3]; quat = root[3:7]
+    x, y, z, w = quat
+    fwd_x = 1 - 2 * (y * y + z * z)
+    fwd_y = 2 * (x * y + w * z)
+    norm = float(np.sqrt(fwd_x ** 2 + fwd_y ** 2)) + 1e-8
+    fwd_x /= norm; fwd_y /= norm
+    head_z = pos[2] + 0.6
+    v_lo = _STATE["v_lo"]; v_hi = _STATE["v_hi"]
+    scale = (v / v_hi) * ARROW_LEN_AT_VHI
+    t_color = float(np.clip((v - v_lo) / max(v_hi - v_lo, 1e-6), 0.0, 1.0))
+    color = np.array([t_color, 0.0, 1.0 - t_color], dtype=np.float32)
+    sx, sy = pos[0], pos[1]
+    ex, ey = sx + fwd_x * scale, sy + fwd_y * scale
+    main = np.array([sx, sy, head_z, ex, ey, head_z], dtype=np.float32)
+    env.gym.add_lines(env.viewer, env.envs[0], 1, main, color)
+    head_size = 0.1
+    lx = ex - fwd_x * head_size + fwd_y * head_size * 0.5
+    ly = ey - fwd_y * head_size - fwd_x * head_size * 0.5
+    rx = ex - fwd_x * head_size - fwd_y * head_size * 0.5
+    ry = ey - fwd_y * head_size + fwd_x * head_size * 0.5
+    env.gym.add_lines(env.viewer, env.envs[0], 1,
+                      np.array([ex, ey, head_z, lx, ly, head_z], dtype=np.float32), color)
+    env.gym.add_lines(env.viewer, env.envs[0], 1,
+                      np.array([ex, ey, head_z, rx, ry, head_z], dtype=np.float32), color)
