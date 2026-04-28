@@ -101,3 +101,20 @@ def load_and_patch_yaml(slot: str) -> tuple[str, float, float, float]:
     with open(tmp, 'w') as f:
         f.write(text)
     return tmp, v_lo, v_hi, term_height
+
+
+def _install_term_dist_patch():
+    """Restore yaml's terminationDistance, which gets clobbered to 0.5 by
+    phc/learning/im_amp_players.py:41 in test mode."""
+    from phc.env.tasks.humanoid_im_vic import HumanoidImVIC
+    orig_reset = HumanoidImVIC._compute_reset
+
+    def patched_reset(self):
+        if not getattr(self, '_term_dist_restored', False):
+            cfg_dist = float(self.cfg["env"].get("terminationDistance", 0.5))
+            self._termination_distances[:] = cfg_dist
+            self._term_dist_restored = True
+            print(f"[demo] _termination_distances overridden to {cfg_dist} (env yaml)")
+        return orig_reset(self)
+
+    HumanoidImVIC._compute_reset = patched_reset
