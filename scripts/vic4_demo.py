@@ -44,7 +44,7 @@ import yaml
 
 
 def resolve_exp_dir(slot: str) -> str:
-    if slot in ('S12', 'S13'):
+    if slot in ('S12', 'S13', 'S14', 'S15'):
         return 'exp_config/forward_walking/260428_VIC4_VCMD_v9'
     if slot in ('S9', 'S10', 'S11'):
         return 'exp_config/forward_walking/260428_VIC4_VCMD_v8'

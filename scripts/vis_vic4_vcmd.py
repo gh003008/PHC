@@ -119,14 +119,14 @@ def install_patches():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--slot', choices=['S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S12', 'S13'], required=True)
+    ap.add_argument('--slot', choices=['S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S12', 'S13', 'S14', 'S15'], required=True)
     ap.add_argument('--epoch', type=int, default=-1)
     ap.add_argument('--num_envs', type=int, default=8)
     ap.add_argument('--no_virtual_display', action='store_true')
     args = ap.parse_args()
 
-    # S12/S13 use v9 3-clip data; S9/S10/S11 use v8 2-clip; S4-S8 use 260427.
-    if args.slot in ('S12', 'S13'):
+    # S12-S15 use v9 3-clip data; S9/S10/S11 use v8 2-clip; S4-S8 use 260427.
+    if args.slot in ('S12', 'S13', 'S14', 'S15'):
         exp_dir = 'exp_config/forward_walking/260428_VIC4_VCMD_v9'
     elif args.slot in ('S9', 'S10', 'S11'):
         exp_dir = 'exp_config/forward_walking/260428_VIC4_VCMD_v8'
