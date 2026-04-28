@@ -118,3 +118,50 @@ def _install_term_dist_patch():
         return orig_reset(self)
 
     HumanoidImVIC._compute_reset = patched_reset
+
+
+# Module-level mutable state shared between the render hook and the rest.
+# Initialized in main() before installing patches.
+_STATE = {
+    "v_lo": 0.82,
+    "v_hi": 1.23,
+    "term_height": 0.15,
+    "desired_v_cmd": 1.025,    # mid of [v_lo, v_hi]
+    "paused": False,
+    "step": 0,
+    "fall_count": 0,
+    "subs_ready": False,
+}
+
+# IsaacGym action names → registered key code
+_KEY_BINDINGS = [
+    ("v_up", "KEY_UP"),
+    ("v_down", "KEY_DOWN"),
+    ("v_set_1", "KEY_1"),
+    ("v_set_2", "KEY_2"),
+    ("v_set_3", "KEY_3"),
+    ("v_set_4", "KEY_4"),
+    ("v_set_5", "KEY_5"),
+    ("v_set_6", "KEY_6"),
+    ("v_set_7", "KEY_7"),
+    ("v_set_8", "KEY_8"),
+    ("v_set_9", "KEY_9"),
+    ("demo_reset", "KEY_R"),       # NB: PHC also subscribes KEY_R="reset" — we'll handle the
+                                    # "demo_reset" event explicitly instead of duplicating logic
+    ("demo_pause", "KEY_SPACE"),
+    ("demo_quit", "KEY_ESCAPE"),
+]
+
+
+def _maybe_subscribe_keys(env):
+    """Register keyboard subscriptions on the viewer (idempotent, only first call does work).
+    Must be called from inside the render hook (after viewer creation)."""
+    if _STATE["subs_ready"]:
+        return
+    if env.viewer is None:
+        return
+    for action_name, key_attr in _KEY_BINDINGS:
+        key_code = getattr(gymapi, key_attr)
+        env.gym.subscribe_viewer_keyboard_event(env.viewer, key_code, action_name)
+    _STATE["subs_ready"] = True
+    print("[demo] keyboard subscriptions registered")
