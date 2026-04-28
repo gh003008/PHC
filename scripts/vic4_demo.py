@@ -165,3 +165,33 @@ def _maybe_subscribe_keys(env):
         env.gym.subscribe_viewer_keyboard_event(env.viewer, key_code, action_name)
     _STATE["subs_ready"] = True
     print("[demo] keyboard subscriptions registered")
+
+
+def _handle_events(env):
+    """Poll keyboard events and update _STATE / env state.
+    MUST be called BEFORE orig_render() since query_viewer_action_events()
+    consumes the queue."""
+    if env.viewer is None:
+        return
+    v_lo = _STATE["v_lo"]; v_hi = _STATE["v_hi"]
+    for evt in env.gym.query_viewer_action_events(env.viewer):
+        if evt.value <= 0:
+            continue   # only on press (value > 0 means down-press)
+        a = evt.action
+        if a == "v_up":
+            _STATE["desired_v_cmd"] = float(np.clip(_STATE["desired_v_cmd"] + 0.05, v_lo, v_hi))
+        elif a == "v_down":
+            _STATE["desired_v_cmd"] = float(np.clip(_STATE["desired_v_cmd"] - 0.05, v_lo, v_hi))
+        elif a.startswith("v_set_"):
+            k = int(a.split("_")[-1])  # 1..9
+            _STATE["desired_v_cmd"] = v_lo + (k - 1) / 8.0 * (v_hi - v_lo)
+        elif a == "demo_reset":
+            env.reset_buf[:] = 1
+            _STATE["fall_count"] = 0
+            print(f"[demo] hard reset (R) — v_cmd will resume at {_STATE['desired_v_cmd']:.3f}")
+        elif a == "demo_pause":
+            _STATE["paused"] = not _STATE["paused"]
+            print(f"[demo] {'PAUSED' if _STATE['paused'] else 'RESUMED'}")
+        elif a == "demo_quit":
+            print("[demo] quit (ESC)")
+            sys.exit(0)
