@@ -238,3 +238,57 @@ def _apply_cmd_and_draw(env):
                       np.array([ex, ey, head_z, lx, ly, head_z], dtype=np.float32), color)
     env.gym.add_lines(env.viewer, env.envs[0], 1,
                       np.array([ex, ey, head_z, rx, ry, head_z], dtype=np.float32), color)
+
+
+def _lock_camera(env):
+    """Lock the IsaacGym camera to env 0's pelvis with a quartering follow-shot."""
+    if env.viewer is None:
+        return
+    pos = env._humanoid_root_states[0, :3].detach().cpu().numpy()
+    cam_pos = gymapi.Vec3(float(pos[0] - 3.0), float(pos[1] - 3.0), float(pos[2] + 1.5))
+    cam_target = gymapi.Vec3(float(pos[0]), float(pos[1]), float(pos[2]))
+    env.gym.viewer_camera_look_at(env.viewer, None, cam_pos, cam_target)
+
+
+def _check_fall(env):
+    """If env 0's pelvis stays below terminationHeight for 5 consecutive frames,
+    auto-trigger reset_buf[0]=1 and zero the counter."""
+    pelvis_z = float(env._humanoid_root_states[0, 2].item())
+    if pelvis_z < _STATE["term_height"]:
+        _STATE["fall_count"] += 1
+    else:
+        _STATE["fall_count"] = 0
+    if _STATE["fall_count"] >= 5:
+        env.reset_buf[0] = 1
+        _STATE["fall_count"] = 0
+        print(f"[demo] auto-reset env 0 (pelvis_z={pelvis_z:.3f} < term_height={_STATE['term_height']:.3f})")
+
+
+def _log(env):
+    if _STATE["step"] % 60 == 0:
+        pelvis_z = float(env._humanoid_root_states[0, 2].item())
+        print(f"[demo] step={_STATE['step']:6d}  v_cmd={_STATE['desired_v_cmd']:+.3f}  pelvis_z={pelvis_z:+.3f}")
+
+
+def _install_render_patch():
+    """Patch Humanoid.render to:
+      1. lazily subscribe keyboard on first call,
+      2. poll events BEFORE orig_render (so PHC's render() doesn't drain queue),
+      3. apply v_cmd override + draw arrow,
+      4. lock camera to env 0,
+      5. fall recovery,
+      6. log."""
+    from phc.env.tasks.humanoid import Humanoid
+    orig_render = Humanoid.render
+
+    def patched_render(self, sync_frame_time=False):
+        _maybe_subscribe_keys(self)
+        _handle_events(self)
+        _apply_cmd_and_draw(self)
+        _lock_camera(self)
+        _check_fall(self)
+        _STATE["step"] += 1
+        _log(self)
+        return orig_render(self, sync_frame_time)
+
+    Humanoid.render = patched_render
