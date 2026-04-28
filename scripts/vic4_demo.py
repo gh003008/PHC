@@ -292,3 +292,44 @@ def _install_render_patch():
         return orig_render(self, sync_frame_time)
 
     Humanoid.render = patched_render
+
+
+def main():
+    exp_dir = resolve_exp_dir(SLOT)
+    cfg_env, v_lo, v_hi, term_h = load_and_patch_yaml(SLOT)
+    cfg_train = f"{exp_dir}/im_walk_vic.yaml"
+    ckpt_path, resolved_epoch = resolve_checkpoint(SLOT, EPOCH)
+
+    _STATE["v_lo"] = v_lo
+    _STATE["v_hi"] = v_hi
+    _STATE["term_height"] = term_h
+    _STATE["desired_v_cmd"] = 0.5 * (v_lo + v_hi)
+
+    task_name = "HumanoidImVICCmdRetime" if SLOT == "S4" else "HumanoidImVICCmdMultiClip"
+
+    sys.argv = [
+        "run.py",
+        "--task", task_name,
+        "--cfg_env", cfg_env,
+        "--cfg_train", cfg_train,
+        "--num_envs", "2",
+        "--test", "--epoch", str(resolved_epoch),
+        "--experiment", f"VIC4_VCMD_{SLOT}",
+    ]
+
+    _install_term_dist_patch()
+    _install_render_patch()
+
+    print("=" * 70)
+    print(f"[demo] SLOT={SLOT}  EPOCH={resolved_epoch}  ckpt={ckpt_path}")
+    print(f"[demo] v_cmd legal range: [{v_lo:.3f}, {v_hi:.3f}] m/s")
+    print(f"[demo] start v_cmd = {_STATE['desired_v_cmd']:.3f}")
+    print(f"[demo] keys:  Up/Down +-0.05  |  1..9 snap to range levels  |  R reset  |  Space pause  |  Esc quit")
+    print("=" * 70)
+
+    from phc import run as phc_run
+    phc_run.main()
+
+
+if __name__ == "__main__":
+    main()
