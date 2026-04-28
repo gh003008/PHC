@@ -73,3 +73,31 @@ def resolve_checkpoint(slot: str, epoch: int) -> tuple[str, int]:
     path = candidates[-1]
     ep_str = os.path.basename(path).split('_')[-1].replace('.pth', '')
     return path, int(ep_str)
+
+
+def load_and_patch_yaml(slot: str) -> tuple[str, float, float, float]:
+    """Read slot's env yaml, extract multiclip_v_cmd_range and terminationHeight,
+    write a tmp yaml with num_envs=2 and env_spacing=50.
+    Returns (tmp_yaml_path, v_lo, v_hi, term_height)."""
+    import re
+    src = f"{resolve_exp_dir(slot)}/env_im_walk_vic_{slot}.yaml"
+    with open(src) as f:
+        text = f.read()
+    cfg = yaml.safe_load(text)
+    env = cfg.get("env", {})
+    rng = env.get("multiclip_v_cmd_range")
+    if rng is None or len(rng) != 2:
+        print(f"[demo] WARN: yaml has no multiclip_v_cmd_range, defaulting to [0.6, 1.4]")
+        v_lo, v_hi = 0.6, 1.4
+    else:
+        v_lo, v_hi = float(rng[0]), float(rng[1])
+    term_height = float(env.get("terminationHeight", 0.15))
+    # Regex-patch num_envs / numEnvs / env_spacing / envSpacing to demo values
+    text = re.sub(r'^(\s*num_envs:\s*)\d+', r'\g<1>2', text, flags=re.MULTILINE)
+    text = re.sub(r'^(\s*numEnvs:\s*)\d+', r'\g<1>2', text, flags=re.MULTILINE)
+    text = re.sub(r'^(\s*env_spacing:\s*)\d+', r'\g<1>50', text, flags=re.MULTILINE)
+    text = re.sub(r'^(\s*envSpacing:\s*)\d+', r'\g<1>50', text, flags=re.MULTILINE)
+    tmp = f"/tmp/env_vic4_demo_{slot}.yaml"
+    with open(tmp, 'w') as f:
+        f.write(text)
+    return tmp, v_lo, v_hi, term_height
