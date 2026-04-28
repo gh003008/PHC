@@ -5,7 +5,7 @@
 #SBATCH -n 1
 #SBATCH --gres=gpu:idx3:1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=24G
+#SBATCH --mem=15G
 #SBATCH -t 36:00:00
 #SBATCH -o logs/%x_%j.out
 #SBATCH -e logs/%x_%j.err
@@ -28,7 +28,7 @@ python phc/run.py \
   --task HumanoidImVICCmdMultiClip \
   --cfg_env exp_config/forward_walking/260428_VIC4_VCMD_v9/env_im_walk_vic_S13.yaml \
   --cfg_train exp_config/forward_walking/260428_VIC4_VCMD_v9/im_walk_vic.yaml \
-  --headless --num_envs 512 --no_log \
+  --headless --num_envs 384 --no_log \
   --experiment VIC4_VCMD_S13
 
 echo "=== Job finished: $(date) ==="
