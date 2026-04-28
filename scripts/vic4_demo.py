@@ -39,7 +39,6 @@ os.chdir(_PHC_ROOT)
 import isaacgym  # noqa: F401
 from isaacgym import gymapi  # noqa: F401
 import numpy as np
-import torch
 import yaml
 
 
@@ -190,9 +189,10 @@ def _handle_events(env):
             print(f"[demo] hard reset (R) — v_cmd will resume at {_STATE['desired_v_cmd']:.3f}")
         elif a == "demo_pause":
             _STATE["paused"] = not _STATE["paused"]
+            env.paused = _STATE["paused"]    # sync to base_task field that gates gym.simulate()
             print(f"[demo] {'PAUSED' if _STATE['paused'] else 'RESUMED'}")
         elif a == "demo_quit":
-            print("[demo] quit (ESC)")
+            print("[demo] quit (Q)")
             sys.exit(0)
 
 
