@@ -1,26 +1,20 @@
-"""IsaacGym viewer for VIC4+v_cmd slots (S4/S5/S6) with v_cmd visualization.
+"""Record IsaacGym viewer frames for VIC4+v_cmd slots and combine into mp4.
 
-Wraps `phc/run.py --test` with:
-  1. Restores env yaml's terminationDistance (0.4 or 0.6) — overrides the
-     hardcoded 0.5m in `phc/learning/im_amp_players.py:41`.
-  2. v_cmd visualization:
-       - Forward arrow above each humanoid head, length proportional to v_cmd.
-         Color: blue (slow) -> red (fast).
-       - Terminal log of v_cmd at periodic intervals.
+Hooks Humanoid.render to call gym.write_viewer_image_to_file every step into
+/tmp/record_frames_<slot>/, runs for --record_seconds, then exits and combines
+PNGs into mp4 via ffmpeg.
 
 Usage:
   conda activate phc
-  python scripts/vis_vic4_vcmd.py --slot S4
-  python scripts/vis_vic4_vcmd.py --slot S5 --epoch 10000
-  python scripts/vis_vic4_vcmd.py --slot S6 --no_virtual_display
-
-Notes:
-  - num_envs=1 NOT supported by HumanoidImVICCmdMultiClip
-  - Default num_envs=8
+  python scripts/record_vic4_vcmd.py --slot S8 --epoch 12700 --record_seconds 20
+  python scripts/record_vic4_vcmd.py --slot S5 --record_seconds 20  # uses S5.pth
 """
 from __future__ import annotations
 import argparse
+import glob
 import os
+import shutil
+import subprocess
 import sys
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -37,16 +31,16 @@ import numpy as np
 import torch
 
 
-# v_cmd range for arrow color/length (user option c: S5/S6 multiclip_v_cmd_range)
 V_LO, V_HI = 0.32, 0.75
 ARROW_LEN_AT_VHI = 1.5
 
 
-def install_patches():
+def install_patches(record_dir, target_frames):
     from phc.env.tasks.humanoid_im_vic import HumanoidImVIC
     from phc.env.tasks.humanoid import Humanoid
 
-    # Restore env yaml's terminationDistance (overrides player 0.5m hardcode)
+    state = {'frame_count': 0, 'done': False}
+
     orig_reset = HumanoidImVIC._compute_reset
 
     def patched_reset(self):
@@ -54,43 +48,39 @@ def install_patches():
             cfg_dist = float(self.cfg["env"].get("terminationDistance", 0.5))
             self._termination_distances[:] = cfg_dist
             self._term_dist_restored = True
-            self._vis_step = 0
-            print(f"[vis] _termination_distances overridden to {cfg_dist} (env yaml)")
+            print(f"[rec] _termination_distances overridden to {cfg_dist}")
         return orig_reset(self)
 
     HumanoidImVIC._compute_reset = patched_reset
 
-    # Draw forward arrows + log v_cmd
     orig_render = Humanoid.render
 
     def patched_render(self, sync_frame_time=False):
         ret = orig_render(self, sync_frame_time)
         if self.viewer is None or not hasattr(self, '_current_cmd'):
             return ret
-        self._vis_step = getattr(self, '_vis_step', 0) + 1
+        if state['done']:
+            return ret
 
+        # v_cmd arrows
         self.gym.clear_lines(self.viewer)
-
         root_states = self._humanoid_root_states
         n = root_states.shape[0]
         v_cmd = self._current_cmd[:, 0].detach().cpu().numpy()
         root_pos = root_states[:, :3].detach().cpu().numpy()
         root_rot = root_states[:, 3:7].detach().cpu().numpy()
-
         x, y, z, w = root_rot[:, 0], root_rot[:, 1], root_rot[:, 2], root_rot[:, 3]
         fwd_x = 1 - 2 * (y * y + z * z)
         fwd_y = 2 * (x * y + w * z)
         norm = np.sqrt(fwd_x ** 2 + fwd_y ** 2) + 1e-8
         fwd_x /= norm
         fwd_y /= norm
-
         head_z = root_pos[:, 2] + 0.6
         scale = (v_cmd / V_HI) * ARROW_LEN_AT_VHI
         t_color = np.clip((v_cmd - V_LO) / (V_HI - V_LO), 0.0, 1.0)
         r = t_color
         g = np.zeros_like(t_color)
         b = 1.0 - t_color
-
         for env_i in range(n):
             sx, sy, sz = root_pos[env_i, 0], root_pos[env_i, 1], head_z[env_i]
             ex = sx + fwd_x[env_i] * scale[env_i]
@@ -108,24 +98,60 @@ def install_patches():
             verts3 = np.array([ex, ey, sz, rx, ry, sz], dtype=np.float32)
             self.gym.add_lines(self.viewer, self.envs[env_i], 1, verts3, colors)
 
-        if self._vis_step % 60 == 0:
-            v_str = "  ".join(f"env{e:02d}={v_cmd[e]:.2f}" for e in range(min(3, n)))
-            print(f"[vis] step={self._vis_step:6d}  {v_str}")
+        # Frame capture
+        img_path = os.path.join(record_dir, f"frame_{state['frame_count']:06d}.png")
+        try:
+            self.gym.write_viewer_image_to_file(self.viewer, img_path)
+        except Exception as e:
+            print(f"[rec] capture failed at frame {state['frame_count']}: {e}")
+        state['frame_count'] += 1
+
+        if state['frame_count'] % 30 == 0:
+            print(f"[rec] frame {state['frame_count']}/{target_frames} captured")
+
+        if state['frame_count'] >= target_frames:
+            print(f"[rec] target {target_frames} frames reached, exiting")
+            state['done'] = True
+            sys.exit(0)
 
         return ret
 
     Humanoid.render = patched_render
 
 
+def find_checkpoint(slot, epoch):
+    if epoch < 0:
+        # Look for SX.pth (final) or latest SX_NNNNNNNN.pth
+        final = f"output/VIC4_VCMD_{slot}.pth"
+        if os.path.exists(final):
+            return final, -1
+        candidates = sorted(glob.glob(f"output/VIC4_VCMD_{slot}_*.pth"))
+        if candidates:
+            return candidates[-1], int(os.path.basename(candidates[-1]).split('_')[-1].replace('.pth', ''))
+        raise FileNotFoundError(f"no checkpoint for {slot}")
+    return f"output/VIC4_VCMD_{slot}_{epoch:08d}.pth", epoch
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--slot', choices=['S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S12', 'S13'], required=True)
     ap.add_argument('--epoch', type=int, default=-1)
-    ap.add_argument('--num_envs', type=int, default=8)
-    ap.add_argument('--no_virtual_display', action='store_true')
+    ap.add_argument('--num_envs', type=int, default=4)
+    ap.add_argument('--record_seconds', type=int, default=20)
+    ap.add_argument('--fps', type=int, default=30)
+    ap.add_argument('--out_dir', default='videos')
     args = ap.parse_args()
 
-    # S12/S13 use v9 3-clip data; S9/S10/S11 use v8 2-clip; S4-S8 use 260427.
+    ckpt_path, resolved_epoch = find_checkpoint(args.slot, args.epoch)
+    print(f"[rec] using checkpoint: {ckpt_path}")
+
+    target_frames = args.record_seconds * args.fps
+    record_dir = f"/tmp/record_frames_{args.slot}_{resolved_epoch}"
+    if os.path.exists(record_dir):
+        shutil.rmtree(record_dir)
+    os.makedirs(record_dir)
+    os.makedirs(args.out_dir, exist_ok=True)
+
     if args.slot in ('S12', 'S13'):
         exp_dir = 'exp_config/forward_walking/260428_VIC4_VCMD_v9'
     elif args.slot in ('S9', 'S10', 'S11'):
@@ -133,7 +159,7 @@ def main():
     else:
         exp_dir = 'exp_config/forward_walking/260427_VIC4_VCMD'
     src_env = f'{exp_dir}/env_im_walk_vic_{args.slot}.yaml'
-    cfg_env = f'/tmp/env_vic4_vcmd_{args.slot}_vis.yaml'
+    cfg_env = f'/tmp/env_vic4_vcmd_{args.slot}_rec.yaml'
     with open(src_env) as f:
         env_cfg = f.read()
     env_cfg = env_cfg.replace('num_envs: 512', f'num_envs: {args.num_envs}')
@@ -150,19 +176,42 @@ def main():
         '--cfg_env', cfg_env,
         '--cfg_train', cfg_train,
         '--num_envs', str(args.num_envs),
-        '--test', '--epoch', str(args.epoch),
+        '--test', '--epoch', str(resolved_epoch),
         '--experiment', f'VIC4_VCMD_{args.slot}',
     ]
-    if args.no_virtual_display:
-        sys.argv.append('--no_virtual_display')
 
-    install_patches()
+    install_patches(record_dir, target_frames)
 
-    print(f"[vis] slot={args.slot} epoch={args.epoch} num_envs={args.num_envs}")
-    print(f"[vis] task={task_name}")
-    print(f"[vis] arrow color: blue (v_cmd={V_LO} m/s) -> red (v_cmd={V_HI} m/s)")
-    from phc import run as phc_run
-    phc_run.main()
+    print(f"[rec] slot={args.slot} resolved_epoch={resolved_epoch} num_envs={args.num_envs}")
+    print(f"[rec] target_frames={target_frames} ({args.record_seconds}s @ {args.fps}fps)")
+    print(f"[rec] frames -> {record_dir}")
+
+    try:
+        from phc import run as phc_run
+        phc_run.main()
+    except SystemExit:
+        pass
+
+    # Combine PNGs to mp4
+    out_path = os.path.join(args.out_dir, f"VIC4_VCMD_{args.slot}_ep{resolved_epoch}.mp4")
+    ffmpeg_bin = shutil.which('ffmpeg') or '/home/exolab/miniconda3/bin/ffmpeg'
+    cmd = [
+        ffmpeg_bin, '-y',
+        '-framerate', str(args.fps),
+        '-i', os.path.join(record_dir, 'frame_%06d.png'),
+        '-c:v', 'libopenh264',
+        '-pix_fmt', 'yuv420p',
+        out_path,
+    ]
+    print(f"[rec] combining frames: {' '.join(cmd)}")
+    subprocess.run(cmd, check=False)
+    if os.path.exists(out_path):
+        size_mb = os.path.getsize(out_path) / 1024 / 1024
+        print(f"[rec] saved {out_path} ({size_mb:.1f} MB)")
+        # Cleanup PNGs
+        shutil.rmtree(record_dir)
+    else:
+        print(f"[rec] WARN: ffmpeg did not produce {out_path}; PNGs kept at {record_dir}")
 
 
 if __name__ == '__main__':
