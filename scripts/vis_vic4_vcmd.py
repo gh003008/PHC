@@ -136,8 +136,9 @@ def main():
     cfg_env = f'/tmp/env_vic4_vcmd_{args.slot}_vis.yaml'
     with open(src_env) as f:
         env_cfg = f.read()
-    env_cfg = env_cfg.replace('num_envs: 512', f'num_envs: {args.num_envs}')
-    env_cfg = env_cfg.replace('numEnvs: 512', f'numEnvs: {args.num_envs}')
+    import re
+    env_cfg = re.sub(r'^(\s*num_envs:\s*)\d+', rf'\g<1>{args.num_envs}', env_cfg, flags=re.MULTILINE)
+    env_cfg = re.sub(r'^(\s*numEnvs:\s*)\d+', rf'\g<1>{args.num_envs}', env_cfg, flags=re.MULTILINE)
     with open(cfg_env, 'w') as f:
         f.write(env_cfg)
 
