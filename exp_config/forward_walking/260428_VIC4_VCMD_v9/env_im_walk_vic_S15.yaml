@@ -1,5 +1,5 @@
 project_name: "PHC_Walk_Baseline"
-notes: "VIC4_VCMD S15 — S14 base (no fallInit) + Pelvis added to trackBodies + fut_tracks=True. Stacked fixes: trunk pose tracking + 3-step lookahead obs."
+notes: "VIC4_VCMD S15 — S14 base (no fallInit) + Pelvis added to trackBodies. (fut_tracks dropped: HumanoidImVIC._compute_task_obs has shape bug when fut_tracks=True, root_pos is single-sample but ref_rb_pos_subset becomes 3-sample. Tests pelvis trunk pose tracking only.)"
 
 disable_multiprocessing: False
 
@@ -14,7 +14,7 @@ env:
   is_flag_run: False
   enable_debug_vis: False
 
-  fut_tracks: True              # S15: was False — enable 3-step lookahead obs
+  fut_tracks: False             # S15: dropped (HumanoidImVIC has shape bug when True)
   obs_v: 6
   auto_pmcp: False
   auto_pmcp_soft: True
