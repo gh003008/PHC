@@ -12,14 +12,13 @@ Controls (live, in the IsaacGym window):
   Up   / Down  : v_cmd +/- 0.05 (clamped to learned range)
   1..9         : v_cmd snap to 9 levels across learned range
   R            : hard reset humanoid to standing pose at origin
-  Space        : pause / resume sim
-  Esc          : quit
+  P            : pause / resume sim
+  Q            : quit
 
 ImGui slider is best-effort: rendered if the IsaacGym binding exposes
 a value-mutating UI callback, otherwise falls back to keyboard only.
 """
 from __future__ import annotations
-import argparse
 import glob
 import os
 import sys
@@ -148,8 +147,8 @@ _KEY_BINDINGS = [
     ("v_set_9", "KEY_9"),
     ("demo_reset", "KEY_R"),       # NB: PHC also subscribes KEY_R="reset" — we'll handle the
                                     # "demo_reset" event explicitly instead of duplicating logic
-    ("demo_pause", "KEY_SPACE"),
-    ("demo_quit", "KEY_ESCAPE"),
+    ("demo_pause", "KEY_P"),
+    ("demo_quit", "KEY_Q"),
 ]
 
 
@@ -186,7 +185,7 @@ def _handle_events(env):
             k = int(a.split("_")[-1])  # 1..9
             _STATE["desired_v_cmd"] = v_lo + (k - 1) / 8.0 * (v_hi - v_lo)
         elif a == "demo_reset":
-            env.reset_buf[:] = 1
+            env.reset_buf[0] = 1
             _STATE["fall_count"] = 0
             print(f"[demo] hard reset (R) — v_cmd will resume at {_STATE['desired_v_cmd']:.3f}")
         elif a == "demo_pause":
@@ -289,6 +288,10 @@ def _install_render_patch():
         _check_fall(self)
         _STATE["step"] += 1
         _log(self)
+        if _STATE["paused"]:
+            if self.viewer is not None:
+                self.gym.draw_viewer(self.viewer, self.sim, True)
+            return None
         return orig_render(self, sync_frame_time)
 
     Humanoid.render = patched_render
@@ -324,7 +327,7 @@ def main():
     print(f"[demo] SLOT={SLOT}  EPOCH={resolved_epoch}  ckpt={ckpt_path}")
     print(f"[demo] v_cmd legal range: [{v_lo:.3f}, {v_hi:.3f}] m/s")
     print(f"[demo] start v_cmd = {_STATE['desired_v_cmd']:.3f}")
-    print(f"[demo] keys:  Up/Down +-0.05  |  1..9 snap to range levels  |  R reset  |  Space pause  |  Esc quit")
+    print(f"[demo] keys:  Up/Down +-0.05  |  1..9 snap to range levels  |  R reset  |  P pause  |  Q quit")
     print("=" * 70)
 
     from phc import run as phc_run
