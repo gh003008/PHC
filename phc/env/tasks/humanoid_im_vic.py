@@ -232,7 +232,10 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
             print(f"[{self.__class__.__name__}] Foot Pos Reward: w={self._foot_pos_reward_w}, k={self._foot_pos_reward_k}, bodies={self._foot_body_ids.tolist()}")
         if self._foot_clearance_reward_w > 0:
             print(f"[{self.__class__.__name__}] Foot Clearance Reward: w={self._foot_clearance_reward_w}, k={self._foot_clearance_reward_k}, swing_thresh={self._foot_clearance_swing_thresh}m, bodies={self._foot_body_ids.tolist()}")
-        # S16: knee angle DOF indices (L_Knee, R_Knee × 3 axes each = 6 dofs)
+        # S16: knee angle DOF indices (L_Knee, R_Knee × 3 axes each = 6 dofs).
+        # Pre-allocate the per-step buffers so the reward block runs alloc-free
+        # and doesn't fragment glibc's heap (which previously caused the ep-500
+        # shape_resampling load_motions() to OOM-kill the job).
         if self._knee_angle_reward_w > 0:
             l_knee_body = self._dof_names.index("L_Knee")
             r_knee_body = self._dof_names.index("R_Knee")
@@ -240,6 +243,12 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
                                 [r_knee_body * 3 + a for a in range(3)]
             self._knee_dof_indices = torch.tensor(knee_dof_idx_list,
                                                   device=self.device, dtype=torch.long)
+            n_knee = len(knee_dof_idx_list)
+            self._knee_sim_buf = torch.zeros(self.num_envs, n_knee, device=self.device)
+            self._knee_ref_buf = torch.zeros(self.num_envs, n_knee, device=self.device)
+            self._knee_diff_buf = torch.zeros(self.num_envs, n_knee, device=self.device)
+            self._knee_err_buf = torch.zeros(self.num_envs, device=self.device)
+            self._knee_mask_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
             print(f"[{self.__class__.__name__}] Knee Angle Reward: w={self._knee_angle_reward_w}, k={self._knee_angle_reward_k}, dofs={knee_dof_idx_list}")
 
         if (not self.headless or flags.server_mode):
@@ -1241,17 +1250,28 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
             self.rew_buf[:] += foot_pos_reward
             self.reward_raw = torch.cat([self.reward_raw, foot_pos_reward[:, None]], dim=-1)
 
-        # S16: knee angle reward — track L_Knee + R_Knee DOF angles vs reference
-        # to force natural swing-phase flexion without rotation tracking pitfalls.
+        # S16: knee angle reward — track L_Knee + R_Knee DOF angles vs reference.
+        # All ops use pre-allocated buffers (see __init__) to keep this block
+        # alloc-free per step. Per-step fancy-indexing alloc (the pre-refactor
+        # version) was fragmenting glibc heap and causing ep-500 OOM on the
+        # 15 GB Slurm cap during _motion_lib.load_motions().
         if self._knee_angle_reward_w > 0:
-            sim_knee_dof = self._dof_pos[:, self._knee_dof_indices]   # [N, 6]
-            ref_knee_dof = ref_dof_pos[:, self._knee_dof_indices]     # [N, 6]
-            knee_dof_err = ((sim_knee_dof - ref_knee_dof) ** 2).mean(dim=-1)  # [N]
-            knee_angle_reward = torch.exp(-self._knee_angle_reward_k * knee_dof_err) \
-                                * self._knee_angle_reward_w
-            knee_angle_reward[self.progress_buf <= 3] = 0
-            self.rew_buf[:] += knee_angle_reward
-            self.reward_raw = torch.cat([self.reward_raw, knee_angle_reward[:, None]], dim=-1)
+            torch.index_select(self._dof_pos, 1, self._knee_dof_indices,
+                               out=self._knee_sim_buf)
+            torch.index_select(ref_dof_pos, 1, self._knee_dof_indices,
+                               out=self._knee_ref_buf)
+            torch.sub(self._knee_sim_buf, self._knee_ref_buf, out=self._knee_diff_buf)
+            self._knee_diff_buf.pow_(2)
+            torch.mean(self._knee_diff_buf, dim=-1, out=self._knee_err_buf)
+            self._knee_err_buf.mul_(-self._knee_angle_reward_k)
+            self._knee_err_buf.exp_()
+            self._knee_err_buf.mul_(self._knee_angle_reward_w)
+            torch.le(self.progress_buf, 3, out=self._knee_mask_buf)
+            self._knee_err_buf.masked_fill_(self._knee_mask_buf, 0.0)
+            self.rew_buf.add_(self._knee_err_buf)
+            # reward_raw cat is the only remaining alloc (small, contiguous, OK)
+            self.reward_raw = torch.cat(
+                [self.reward_raw, self._knee_err_buf[:, None]], dim=-1)
 
         # VIC: Foot clearance reward — phase-aware swing-only height tracking.
         # Avoids the average-reward trap where stance-phase accuracy hides
