@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** Show that a pain-conditioned PHC controller can reduce synthetic unilateral knee pain/load without locomotion collapse, and that the effect is side-specific.
-**Current focus:** Phase 8 ablation runs are ready; Phase 9 OA knee load proxy implementation has been ingested for next planning
+**Current focus:** Phase 9 OA knee load proxy implementation is complete; Phase 8 ablation runs remain deferred until GPU training resources are available
 
 ## Current Position
 
 Phase: 8 of 9 (Minimal Ablation Runs)
 Plan: 1 of 1 in current phase
-Status: Ready
-Last activity: 2026-04-29 - Ingested PHC-Pain v1.5 OA knee load proxy implementation plan as Phase 9
+Status: Deferred/Blocked on GPU ablation execution
+Last activity: 2026-04-29 - Completed Phase 9 OA knee load proxy implementation and local wiring verification
 
-Progress: [████████░░] 78%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -36,7 +36,7 @@ Progress: [████████░░] 78%
 | Phase 7 | 1 | Complete | N/A |
 | Phase 07.1 | 1 | Complete | N/A |
 | Phase 8 | 0 | Ready | N/A |
-| Phase 9 | 0 | Ready | N/A |
+| Phase 9 | 1 | Complete | N/A |
 
 **Recent Trend:**
 - Last 5 plans: Phase 1 plan 01-01 complete; Phase 2 plan 02-01 complete; Phase 3 plan 03-01 complete; Phase 4 plan 04-01 complete; Phase 5 plan 05-01 complete
@@ -89,14 +89,17 @@ Recent decisions affecting current work:
 - Phase 9 added from the PHC-Pain v1.5 OA knee load proxy plan. It changes the
   pain drive definition toward contact/compression and KAM/KFM-style load
   proxies while preserving `pain_body_state` as the reward-facing variable.
+- Phase 9 completed locally: `oa_contact_v15` is now the default v1 knee
+  mechanism, legacy actuator torque is diagnostics-only, unit/compile/YAML
+  checks pass, and a short headless pretrained probe produced finite OA proxy
+  metrics.
 
 ### Pending Todos
 
 - Run the Phase 4 training/ablation matrix on a suitable GPU and populate
   `docs/superpowers/phc_pain_v1_evidence_template.md` with real metrics.
-- Plan and implement Phase 9 before launching additional long training if the
-  next experiment should target knee OA-style joint loading rather than raw
-  actuator torque.
+- Launch the next long server training run with the Phase 9 `oa_contact_v15`
+  proxy when GPU resources are available.
 
 ### Blockers/Concerns
 

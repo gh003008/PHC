@@ -45,6 +45,126 @@ def compute_power_pain(tau, dq, power_ref=5.0, eps=1e-6):
     return torch.abs(tau * dq) / max(power_ref, eps)
 
 
+def compute_knee_torque_load_proxy(
+    tau,
+    dq,
+    rom_proxy,
+    asset_tau_limit,
+    torque_ref=100.0,
+    power_ref=5.0,
+    w_torque=0.80,
+    w_flex=0.10,
+    w_rom=0.05,
+    w_work=0.05,
+    eps=1e-6,
+):
+    """Knee pain load proxy using an explicit torque reference.
+
+    `asset_tau_limit` is accepted for call-site context, but deliberately not
+    used for normalization because SMPL asset effort limits can be uninformative.
+    """
+    del asset_tau_limit
+    tau_ref = max(float(torque_ref), eps)
+    tau_abs = torch.abs(tau)
+    torque_proxy = tau_abs / tau_ref
+    flex_proxy = torch.relu(tau) / tau_ref
+    work_proxy = torch.relu(tau * dq) / max(float(power_ref), eps)
+    load_proxy = (
+        w_torque * torque_proxy
+        + w_flex * flex_proxy
+        + w_rom * rom_proxy
+        + w_work * work_proxy
+    )
+    return load_proxy, {
+        "torque": torque_proxy,
+        "flex": flex_proxy,
+        "rom": rom_proxy,
+        "work": work_proxy,
+        "tau_abs": tau_abs,
+    }
+
+
+def compute_knee_contact_load_proxy(
+    knee_pos,
+    foot_pos,
+    foot_force,
+    knee_flex,
+    body_weight_ref=700.0,
+    flex_compression_gain=0.25,
+    loading_rate=None,
+    loading_rate_ref=1000.0,
+    w_compression=0.70,
+    w_loaded_flex=0.20,
+    w_loading_rate=0.10,
+    eps=1e-6,
+):
+    """Approximate tibiofemoral compression from stance foot loading."""
+    del knee_pos, foot_pos
+    force_mag = torch.norm(foot_force, dim=-1)
+    vertical_force = torch.relu(foot_force[..., 2])
+    compression = torch.maximum(force_mag, vertical_force) / max(float(body_weight_ref), eps)
+    loaded_flex = compression * torch.relu(knee_flex) * float(flex_compression_gain)
+
+    if loading_rate is None:
+        rate_proxy = torch.zeros_like(compression)
+    else:
+        rate_proxy = torch.relu(loading_rate) / max(float(loading_rate_ref), eps)
+
+    load_proxy = (
+        float(w_compression) * compression
+        + float(w_loaded_flex) * loaded_flex
+        + float(w_loading_rate) * rate_proxy
+    )
+    return load_proxy, {
+        "compression": compression,
+        "loaded_flex": loaded_flex,
+        "loading_rate": rate_proxy,
+    }
+
+
+def compute_knee_moment_load_proxy(
+    knee_pos,
+    foot_pos,
+    foot_force,
+    kam_ref=50.0,
+    kfm_ref=50.0,
+    w_kam=0.70,
+    w_kfm=0.30,
+    eps=1e-6,
+):
+    """Approximate KAM/KFM load from GRF line of action around the knee."""
+    lever = foot_pos - knee_pos
+    force_z = torch.relu(foot_force[..., 2])
+    kam = torch.abs(lever[..., 1] * force_z) / max(float(kam_ref), eps)
+    kfm = torch.abs(lever[..., 0] * force_z) / max(float(kfm_ref), eps)
+    load_proxy = float(w_kam) * kam + float(w_kfm) * kfm
+    return load_proxy, {
+        "kam": kam,
+        "kfm": kfm,
+    }
+
+
+def combine_knee_oa_load_proxy(
+    contact_load,
+    moment_load,
+    torque_load,
+    w_contact=0.60,
+    w_moment=0.40,
+    w_torque=0.0,
+):
+    """Combine OA knee loading channels while preserving ablation visibility."""
+    load_proxy = (
+        float(w_contact) * contact_load
+        + float(w_moment) * moment_load
+        + float(w_torque) * torque_load
+    )
+    return load_proxy, {
+        "contact_load": contact_load,
+        "moment_load": moment_load,
+        "torque_load": torque_load,
+    }
+
+
 def compute_contact_pain(contact_forces, ref_force=150.0, eps=1e-6):
     """Body-level contact force magnitude normalized by a scalar reference.
 

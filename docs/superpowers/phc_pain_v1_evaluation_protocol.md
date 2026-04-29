@@ -33,6 +33,29 @@ Recommended additional diagnostics:
 - cadence or velocity
 - imitation/style reward
 
+## v1.5 OA Knee Load Proxy Metrics
+
+Primary success metrics:
+
+- `pain_v1_right_knee_load`: final reward-facing OA load proxy.
+- `pain_v1_right_knee_state`: leaky pain state driven by OA load.
+- `pain_v1_right_knee_contact_load`: compression and loaded-flexion contact component.
+- `pain_v1_right_knee_moment_load`: KAM/KFM moment-arm component.
+- `pain_v1_right_knee_kam`: medial-compartment loading surrogate.
+
+Secondary diagnostics:
+
+- `pain_v1_right_knee_kfm`: sagittal flexion loading surrogate.
+- `pain_v1_right_knee_compression`: stance foot load normalized by body-weight reference.
+- `pain_v1_right_knee_loaded_flex`: knee flexion under compressive load.
+- `pain_v1_right_knee_tau_abs`, `pain_v1_right_knee_tau_rms`, `pain_v1_right_knee_tau_peak`: legacy actuator-torque diagnostics only.
+
+Interpretation rule:
+Do not claim OA pain reduction from reduced actuator torque alone. v1.5 claims
+must be based on reduced OA load proxy, especially contact load, KAM, and pain
+state. KAM/KFM are estimated PHC load proxies from GRF line-of-action geometry,
+not true medial contact force or full inverse-dynamics joint contact force.
+
 ## Gate 1: Pain/Load Reduction
 
 The main condition must reduce affected-knee pain/load relative to both:

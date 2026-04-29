@@ -63,17 +63,41 @@ pain:
   append_to_obs: True
   active_knee_side: "right"     # right | left | none
   use_external_contact: True
+  # Reward penalizes pain state; pain state is driven by OA-style knee load proxy.
   lambda_p: 0.05
 
   knee_mechanism:
+    proxy_mode: "oa_contact_v15"  # torque_v13 | oa_contact_v14 | oa_contact_v15
     left_sensitivity: 0.0       # v1.0 active side is configured explicitly
     right_sensitivity: 1.0
     left_threshold: 0.30
     right_threshold: 0.30
-    w_torque: 0.50
-    w_flex: 0.25
-    w_rom: 0.25
-    w_work: 0.10
+
+    # Legacy actuator-torque ablation channel. Kept visible, disabled in v1.5 load.
+    torque_ref: 100.0          # Nm reference; do not rely on SMPL asset effort limits
+    w_torque: 0.80
+    w_flex: 0.10
+    w_rom: 0.05
+    w_work: 0.05
+
+    # v1.4 contact/compression proxy.
+    body_weight_ref: 700.0
+    flex_compression_gain: 0.25
+    loading_rate_ref: 1000.0
+    w_compression: 0.70
+    w_loaded_flex: 0.20
+    w_loading_rate: 0.10
+
+    # v1.5 medial OA moment-arm proxy.
+    kam_ref: 50.0
+    kfm_ref: 50.0
+    w_kam: 0.70
+    w_kfm: 0.30
+
+    # Final OA load mixture.
+    w_contact_load: 0.60
+    w_moment_load: 0.40
+    w_legacy_torque_load: 0.00
     memory_alpha: 0.05
 
   checkpoint_adaptation:
@@ -114,6 +138,13 @@ pain:
 
   log_joint_pain: True
   log_contact_pain: True
+
+  grf_debug:
+    enabled: False
+    scale: 0.0015
+    min_force: 5.0
+    max_len: 1.5
+    horizontal_gain: 1.0
 
 plane:
   staticFriction: 1.0

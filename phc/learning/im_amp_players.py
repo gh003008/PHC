@@ -1,5 +1,6 @@
 
 import glob
+import json
 import os
 import sys
 import pdb
@@ -266,6 +267,8 @@ class IMAMPPlayerContinuous(amp_players.AMPPlayerContinuous):
         sum_game_res = 0
         n_games = n_games * n_game_life
         games_played = 0
+        probe_path = os.environ.get("PHC_PAIN_PROBE_JSON")
+        probe_scalars = {}
         has_masks = False
         has_masks_func = getattr(self.env, "has_action_mask", None) is not None
 
@@ -317,6 +320,16 @@ class IMAMPPlayerContinuous(amp_players.AMPPlayerContinuous):
 
                     if COLLECT_Z: info['z'] = z
                     done = self._post_step(info, done.clone())
+                    if probe_path and isinstance(info, dict):
+                        for key, value in info.items():
+                            if not (
+                                key.startswith("pain_v1_")
+                                or key.startswith("lower_limb_")
+                                or key in ("pain_mean", "pain_max")
+                            ):
+                                continue
+                            if isinstance(value, (int, float, bool)):
+                                probe_scalars.setdefault(key, []).append(float(value))
 
                     if render:
                         self.env.render(mode="human")
@@ -380,5 +393,24 @@ class IMAMPPlayerContinuous(amp_players.AMPPlayerContinuous):
                 "av steps:",
                 sum_steps / games_played * n_game_life,
             )
+        if probe_path:
+            os.makedirs(os.path.dirname(probe_path), exist_ok=True)
+            with open(probe_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        key: {
+                            "mean": float(np.mean(values)),
+                            "last": float(values[-1]),
+                            "min": float(np.min(values)),
+                            "max": float(np.max(values)),
+                            "n": len(values),
+                        }
+                        for key, values in sorted(probe_scalars.items())
+                    },
+                    f,
+                    indent=2,
+                    sort_keys=True,
+                )
+            print("PHC_PAIN_PROBE_JSON:", probe_path)
 
         return

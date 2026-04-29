@@ -1,4 +1,6 @@
 import torch
+import json
+import os
 
 from rl_games.algos_torch import players
 from rl_games.algos_torch import torch_ext
@@ -36,6 +38,8 @@ class CommonPlayer(players.PpoPlayerContinuous):
         sum_game_res = 0
         n_games = n_games * n_game_life
         games_played = 0
+        probe_path = os.environ.get("PHC_PAIN_PROBE_JSON")
+        probe_scalars = {}
         has_masks = False
         has_masks_func = getattr(self.env, "has_action_mask", None) is not None
 
@@ -94,6 +98,16 @@ class CommonPlayer(players.PpoPlayerContinuous):
                     steps += 1
 
                     self._post_step(info)
+                    if probe_path and isinstance(info, dict):
+                        for key, value in info.items():
+                            if not (
+                                key.startswith("pain_v1_")
+                                or key.startswith("lower_limb_")
+                                or key in ("pain_mean", "pain_max")
+                            ):
+                                continue
+                            if isinstance(value, (int, float, bool)):
+                                probe_scalars.setdefault(key, []).append(float(value))
 
                     if render:
                         self.env.render(mode='human')
@@ -143,6 +157,25 @@ class CommonPlayer(players.PpoPlayerContinuous):
             print('av reward:', sum_rewards / games_played * n_game_life, 'av steps:', sum_steps / games_played * n_game_life, 'winrate:', sum_game_res / games_played * n_game_life)
         else:
             print('av reward:', sum_rewards / games_played * n_game_life, 'av steps:', sum_steps / games_played * n_game_life)
+        if probe_path:
+            os.makedirs(os.path.dirname(probe_path), exist_ok=True)
+            with open(probe_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        key: {
+                            "mean": float(np.mean(values)),
+                            "last": float(values[-1]),
+                            "min": float(np.min(values)),
+                            "max": float(np.max(values)),
+                            "n": len(values),
+                        }
+                        for key, values in sorted(probe_scalars.items())
+                    },
+                    f,
+                    indent=2,
+                    sort_keys=True,
+                )
+            print("PHC_PAIN_PROBE_JSON:", probe_path)
 
         return
 
