@@ -5,8 +5,8 @@ disable_multiprocessing: False
 
 env:
   motion_file: "sample_data/amass_walking_3clips_seamless_60s_v9.pkl"
-  num_envs: 384          # back to 384 after disabling shape_resampling (was the OOM trigger)
-  numEnvs: 384
+  num_envs: 256          # match S17 for clean A/B; smaller spike at resample fits 15G cap
+  numEnvs: 256
   env_spacing: 5
   envSpacing: 5
   episode_length: 300
@@ -41,7 +41,7 @@ env:
   kp_scale: 1
   power_reward: True
   power_coefficient: 0.0000005
-  shape_resampling_interval: 100000   # disabled — was OOM trigger via load_motions spike
+  shape_resampling_interval: 500   # match S17 / earlier slots; 256 envs gives spike headroom
 
   controlFrequencyInv: 2
   vic_enabled: True
