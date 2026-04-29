@@ -5,8 +5,8 @@ disable_multiprocessing: False
 
 env:
   motion_file: "sample_data/amass_walking_3clips_seamless_60s_v9.pkl"
-  num_envs: 384          # in-place knee_angle refactor removed fragmentation; 384 fits 15G now
-  numEnvs: 384
+  num_envs: 256          # 384 boot OOM today: node swap full from concurrent user jobs
+  numEnvs: 256
   env_spacing: 5
   envSpacing: 5
   episode_length: 300
