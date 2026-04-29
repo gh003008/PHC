@@ -568,15 +568,6 @@ class HumanoidImVIC(humanoid_amp_task.HumanoidAMPTask):
         # if self.hard_negative:
             # self._motion_lib.update_sampling_weight()
 
-        # S16 OOM mitigation: clear allocator caches BEFORE the load spike so a
-        # contiguous chunk is available. Without this, fragmented per-step
-        # caches can prevent the motion-lib alloc and trigger an OOM kill at
-        # the 15 GB Slurm cap.
-        import gc
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
         if flags.test:
             self.forward_motion_samples()
         else:
