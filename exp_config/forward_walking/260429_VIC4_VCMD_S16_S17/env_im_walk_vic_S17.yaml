@@ -41,7 +41,7 @@ env:
   kp_scale: 1
   power_reward: True
   power_coefficient: 0.0000005
-  shape_resampling_interval: 500
+  shape_resampling_interval: 100000   # disabled — node swap exhausted, can't survive spike
 
   controlFrequencyInv: 2
   vic_enabled: True
