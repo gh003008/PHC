@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=15G
 #SBATCH -t 36:00:00
-#SBATCH --begin=2026-05-01T06:00:00
+#SBATCH --begin=2026-04-30T06:00:00
 #SBATCH -o logs/%x_%j.out
 #SBATCH -e logs/%x_%j.err
 
