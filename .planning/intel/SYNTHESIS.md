@@ -9,6 +9,13 @@
 - DOC: 0
 - UNKNOWN: 0
 
+## Scope
+
+- Scoped source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/plans/2026-04-29-phc-pain-v15-knee-load-proxy.md
+- Mode: merge
+- Intended merge: add future PHC-Pain v1.5 OA knee load proxy implementation phase.
+- Completed v1.0 phases were checked as existing context and were not rewritten.
+
 ## Decisions
 
 - Locked decisions: 0
@@ -23,10 +30,10 @@
 
 - Constraints extracted: 8
 - Type breakdown:
-  - api-contract: 1
+  - api-contract: 2
   - schema: 1
   - nfr: 2
-  - protocol: 4
+  - protocol: 3
 
 ## Context
 
@@ -48,6 +55,7 @@
 
 ## Cycle Detection
 
-- Cross-reference cycle detection was run.
+- Cross-reference cycle detection was run for the selected classification.
+- Cross-reference edge observed: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/plans/2026-04-29-phc-pain-v15-knee-load-proxy.md -> docs/superpowers/phc_pain_v1_evaluation_protocol.md
 - Cycles detected: 0
 

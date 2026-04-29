@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** Show that a pain-conditioned PHC controller can reduce synthetic unilateral knee pain/load without locomotion collapse, and that the effect is side-specific.
-**Current focus:** Phase 8 ablation runs are ready; scalar logging probe passed
+**Current focus:** Phase 8 ablation runs are ready; Phase 9 OA knee load proxy implementation has been ingested for next planning
 
 ## Current Position
 
-Phase: 8 of 8 (Minimal Ablation Runs)
+Phase: 8 of 9 (Minimal Ablation Runs)
 Plan: 1 of 1 in current phase
 Status: Ready
-Last activity: 2026-04-28 - Phase 07.1 server probe confirmed TensorBoard `pain_v1_*` scalar tags
+Last activity: 2026-04-29 - Ingested PHC-Pain v1.5 OA knee load proxy implementation plan as Phase 9
 
-Progress: [████████░░] 88%
+Progress: [████████░░] 78%
 
 ## Performance Metrics
 
@@ -36,6 +36,7 @@ Progress: [████████░░] 88%
 | Phase 7 | 1 | Complete | N/A |
 | Phase 07.1 | 1 | Complete | N/A |
 | Phase 8 | 0 | Ready | N/A |
+| Phase 9 | 0 | Ready | N/A |
 
 **Recent Trend:**
 - Last 5 plans: Phase 1 plan 01-01 complete; Phase 2 plan 02-01 complete; Phase 3 plan 03-01 complete; Phase 4 plan 04-01 complete; Phase 5 plan 05-01 complete
@@ -85,11 +86,17 @@ Recent decisions affecting current work:
 - Phase 07.1 server probe completed on Slurm job `3977` using `idx0`; TensorBoard
   event output contains 17 `pain_v1_*` scalar tags, including the four required
   Phase 8 gate metrics.
+- Phase 9 added from the PHC-Pain v1.5 OA knee load proxy plan. It changes the
+  pain drive definition toward contact/compression and KAM/KFM-style load
+  proxies while preserving `pain_body_state` as the reward-facing variable.
 
 ### Pending Todos
 
 - Run the Phase 4 training/ablation matrix on a suitable GPU and populate
   `docs/superpowers/phc_pain_v1_evidence_template.md` with real metrics.
+- Plan and implement Phase 9 before launching additional long training if the
+  next experiment should target knee OA-style joint loading rather than raw
+  actuator torque.
 
 ### Blockers/Concerns
 

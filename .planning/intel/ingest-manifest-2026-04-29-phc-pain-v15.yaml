@@ -1,0 +1,4 @@
+docs:
+  - path: docs/superpowers/plans/2026-04-29-phc-pain-v15-knee-load-proxy.md
+    type: SPEC
+    precedence: 1

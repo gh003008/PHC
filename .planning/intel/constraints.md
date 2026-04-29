@@ -1,108 +1,100 @@
 # Constraints Intel
 
-## PHC-Pain-v1 Mechanism Design
+## PHC-Pain v1.5 Knee Load Proxy Implementation Plan
 
-- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/specs/2026-04-27-phc-pain-v1-mechanism-design.md
+- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/plans/2026-04-29-phc-pain-v15-knee-load-proxy.md
 - type: nfr
-- title: Narrow v1.0 Research Claim
+- title: Future v1.5 OA Knee Load Proxy Scope
 
 Content:
-PHC-Pain-v1.0 is a synthetic mechanism proof, not a clinical gait reproduction,
-patient-specific digital-twin, or validated pain perception claim. Success is
-limited to showing that a pain-conditioned PHC controller can reduce synthetic
-unilateral medial tibiofemoral knee pain/load while preserving locomotion
-competence and side specificity.
+PHC-Pain v1.5 replaces the v1 torque-centric knee pain mechanism with an
+OA-style knee joint loading proxy without launching training. This is scoped as
+future implementation work and must not rewrite completed v1.0 phases or
+promote v1.0 evidence into OA-specific claims.
 
-## Scope: Body-Map Architecture, Knee-Only Experiment
+## Reward-Facing Pain State Contract
 
-- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/specs/2026-04-27-phc-pain-v1-mechanism-design.md
-- type: schema
-- title: Body-Part Pain Map with Knee-Only Activation
-
-Content:
-The v1.0 task uses a general body-part pain observation schema while activating
-only one synthetic unilateral knee pain channel. Initial channels are left_hip,
-right_hip, left_knee, right_knee, left_ankle, right_ankle, back, left_foot, and
-right_foot. Each channel must support at least current pain state and short
-temporal memory. Non-target channels remain structurally present but zero or
-inactive in v1.0.
-
-## Task Boundary
-
-- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/specs/2026-04-27-phc-pain-v1-mechanism-design.md
+- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/plans/2026-04-29-phc-pain-v15-knee-load-proxy.md
 - type: api-contract
-- title: New HumanoidImPainV1 Task
+- title: Preserve pain_body_state as Reward-Facing Variable
 
 Content:
-Implementation planning should preserve the v0 checkpoint-compatible task and
-add a new explicit task subclass, tentatively HumanoidImPainV1. The new task
-owns the observation-dimension change, v1 checkpoint adaptation, and v1
-evaluation gates. parse_task.py should register the new task name when
-implementation begins.
+The reward-facing variable remains `pain_body_state`, but the knee load input
+driving it changes. v1.4 adds a contact/compression proxy from foot GRF and knee
+geometry; v1.5 adds KAM/KFM-style moment-arm proxies so medial knee OA pain is
+driven by estimated tibiofemoral compartment loading rather than actuator
+torque.
 
-## Checkpoint Adaptation
+## Pure-Torch Load Helper Contract
 
-- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/specs/2026-04-27-phc-pain-v1-mechanism-design.md
+- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/plans/2026-04-29-phc-pain-v15-knee-load-proxy.md
+- type: api-contract
+- title: OA Knee Load Proxy Helper Functions
+
+Content:
+`phc/env/util/pain_baseline.py` should add pure-torch helpers
+`compute_knee_contact_load_proxy`, `compute_knee_moment_load_proxy`, and
+`combine_knee_oa_load_proxy`. `compute_knee_torque_load_proxy` remains present
+for backwards compatibility and ablation visibility.
+
+## HumanoidImPainV1 Mode Contract
+
+- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/plans/2026-04-29-phc-pain-v15-knee-load-proxy.md
 - type: protocol
-- title: Partial Weight Loading for Expanded Observation
+- title: Mode-Aware Knee Proxy Selection
 
 Content:
-The v1 policy should copy pretrained weights for original PHC observation
-columns, initialize new pain-observation input columns to zero, and preserve the
-pretrained motor-prior behavior at initialization. Initialization equivalence
-must be checked before training claims.
+`HumanoidImPainV1` should support `knee_mechanism.proxy_mode` values
+`torque_v13`, `oa_contact_v14`, and `oa_contact_v15`. The v1.5 mode computes
+legacy torque diagnostics, contact/compression load, KAM/KFM moment load, and a
+combined OA load while keeping component metrics visible.
 
-## Pain Model
+## Environment Configuration Contract
 
-- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/specs/2026-04-27-phc-pain-v1-mechanism-design.md
+- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/plans/2026-04-29-phc-pain-v15-knee-load-proxy.md
+- type: schema
+- title: env_im_pain_v1 OA Load Configuration
+
+Content:
+`phc/data/cfg/env/env_im_pain_v1.yaml` should set
+`knee_mechanism.proxy_mode: "oa_contact_v15"`, include reference and weight
+values for compression, loaded flexion, loading rate, KAM, KFM, contact load,
+moment load, and legacy torque load, and keep legacy torque weights present but
+disabled by default in the final v1.5 OA load mixture.
+
+## Probe Metric Contract
+
+- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/plans/2026-04-29-phc-pain-v15-knee-load-proxy.md
+- type: protocol
+- title: OA Load Probe Metrics Before Training
+
+Content:
+Before any future training job, a short headless play probe should confirm that
+the JSON probe path captures finite `pain_v1_*` metrics including right-knee
+compression, loaded flexion, KAM, KFM, contact load, moment load, torque load,
+and final reward-facing knee load.
+
+## Evaluation Interpretation Contract
+
+- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/plans/2026-04-29-phc-pain-v15-knee-load-proxy.md
+- type: protocol
+- title: v1.5 OA Metric Hierarchy
+
+Content:
+The evaluation protocol should treat `pain_v1_right_knee_load`,
+`pain_v1_right_knee_state`, `pain_v1_right_knee_contact_load`,
+`pain_v1_right_knee_moment_load`, and `pain_v1_right_knee_kam` as primary v1.5
+metrics. Reduced actuator torque alone must not be used to claim OA pain
+reduction.
+
+## Proxy Validity Boundary
+
+- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/plans/2026-04-29-phc-pain-v15-knee-load-proxy.md
 - type: nfr
-- title: Synthetic Mechanical Provocation Proxy
+- title: Estimated Load Proxy, Not True Contact Force
 
 Content:
-The pain drive is a thresholded, sensitivity-weighted proxy for mechanically
-provocative knee loading, not a validated direct model of perceived pain. The
-initial model uses pain_drive = sensitivity_side * ReLU(weighted_load_proxy -
-threshold_side), with decayed pain_state accumulation. Candidate load proxy
-terms include medial load or KAM proxy, knee flexion torque proxy, near-ROM
-limit or passive torque, and positive knee work. Unavailable terms should be
-logged as unavailable rather than replaced with weak invented proxies.
-
-## Objective
-
-- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/specs/2026-04-27-phc-pain-v1-mechanism-design.md
-- type: protocol
-- title: Reward-Only Pain Cost Main Mechanism
-
-Content:
-The main v1.0 experiment uses PHC task reward plus style terms minus lambda_p
-times affected-knee pain state or drive. Action guard is off in the main
-experiment and may exist only as fallback or debug ablation. Main claims must
-not rely on action clipping.
-
-## Evaluation Gates
-
-- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/specs/2026-04-27-phc-pain-v1-mechanism-design.md
-- type: protocol
-- title: Mechanism, Competence, and Side-Specificity Gates
-
-Content:
-Primary gates are pain/load reduction, locomotion competence, and side
-specificity. Pain/load reduction must compare affected-knee pain_state,
-pain_drive, and available load proxy metrics against baseline or ablation,
-including episode average and stance-phase peak or p95 where available.
-Locomotion competence must catch pain reduction by stopping, freezing, collapse,
-or non-locomotor posture. Side-specificity must reject global freezing or
-bilateral shutdown.
-
-## Required Ablations
-
-- source: /home/jinsu/Documents/GitHub/PHC/docs/superpowers/specs/2026-04-27-phc-pain-v1-mechanism-design.md
-- type: protocol
-- title: Pain Observation and Reward Ablations
-
-Content:
-Required ablations are pain_obs_on + pain_reward_on, pain_obs_off +
-pain_reward_on, pain_obs_on + pain_reward_off, and left-knee versus right-knee
-impairment. A weak action guard debug condition is optional and excluded from
-the main mechanism claim.
+The KAM/KFM proxy uses PHC world axes and simple GRF moment arms rather than
+full inverse dynamics. v1.5 reporting should describe it as an estimated load
+proxy, not true medial contact force.
 

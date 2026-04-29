@@ -21,6 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 7: Main Run Evidence Extraction** - Extract and package evidence from the main condition run before interpreting mechanism quality.
 - [x] **Phase 07.1: Pain Metric Scalar Logging Instrumentation (INSERTED)** - Promote PHC-Pain-v1 env extras into training scalar logs before ablations.
 - [ ] **Phase 8: Minimal Ablation Runs** - Run the smallest condition matrix needed to separate pain observability and reward pressure.
+- [ ] **Phase 9: OA Knee Load Proxy Implementation** - Replace the torque-centric knee pain drive with an OA-style contact and KAM/KFM load proxy before further training.
 
 ## Phase Details
 
@@ -92,7 +93,7 @@ Preserved from the source design but not part of the active v1.0 milestone:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -105,6 +106,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 7. Main Run Evidence Extraction | 1/1 | Complete | 2026-04-27 |
 | 07.1. Pain Metric Scalar Logging Instrumentation | 1/1 | Complete | 2026-04-28 |
 | 8. Minimal Ablation Runs | 0/1 | Ready | - |
+| 9. OA Knee Load Proxy Implementation | 0/1 | Ready | - |
 
 ### Phase 6: Main Checkpoint Preservation And Smoke Evaluation
 
@@ -145,3 +147,13 @@ Plans:
 
 Plans:
 - [ ] 08-01-PLAN.md
+
+### Phase 9: OA Knee Load Proxy Implementation
+
+**Goal:** Replace the torque-centric knee pain drive with an OA-style knee joint loading proxy using contact/compression and KAM/KFM moment-arm estimates.
+**Requirements**: OA-01, OA-02, OA-03, OA-04, OA-05, OA-06, OA-07, OA-08
+**Depends on:** Phase 07.1
+**Plans:** 0 plans
+
+Plans:
+- [ ] Needs plan via `$gsd-plan-phase 9`

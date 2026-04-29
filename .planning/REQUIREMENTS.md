@@ -53,6 +53,19 @@ Requirements for the v1.0 synthetic mechanism proof. Each maps to exactly one ro
 - [ ] **EVAL-04**: Evaluation reports side-specificity and rejects global freezing or bilateral shutdown as mechanism proof.
 - [ ] **EVAL-05**: Diagnostics log gait evidence such as stance asymmetry, knee ROM, step width, pelvis/trunk compensation, knee torque/work, foot progression angle, velocity, and cadence when available.
 
+## v1.5 OA Knee Load Proxy Requirements
+
+Ingested from `docs/superpowers/plans/2026-04-29-phc-pain-v15-knee-load-proxy.md`. These requirements update the pain mechanism definition before additional training, without rewriting completed v1.0 phases.
+
+- [ ] **OA-01**: `pain_body_state` remains the reward-facing variable, but the knee load input driving it is an OA-style joint loading proxy rather than an actuator-torque proxy.
+- [ ] **OA-02**: `phc/env/util/pain_baseline.py` provides pure-torch helpers `compute_knee_contact_load_proxy`, `compute_knee_moment_load_proxy`, and `combine_knee_oa_load_proxy`.
+- [ ] **OA-03**: `compute_knee_torque_load_proxy` remains available for backwards compatibility and ablation diagnostics.
+- [ ] **OA-04**: `HumanoidImPainV1` supports `knee_mechanism.proxy_mode` values `torque_v13`, `oa_contact_v14`, and `oa_contact_v15`.
+- [ ] **OA-05**: The v1.5 proxy logs finite `pain_v1_*` metrics for right-knee compression, loaded flexion, KAM, KFM, contact load, moment load, torque load, and final knee load before any training job is launched.
+- [ ] **OA-06**: `env_im_pain_v1.yaml` defaults to `knee_mechanism.proxy_mode: "oa_contact_v15"` and includes references and weights for compression, loaded flexion, loading rate, KAM, KFM, contact load, moment load, and legacy torque load.
+- [ ] **OA-07**: Evaluation treats `pain_v1_right_knee_load`, `pain_v1_right_knee_state`, `pain_v1_right_knee_contact_load`, `pain_v1_right_knee_moment_load`, and `pain_v1_right_knee_kam` as primary v1.5 metrics.
+- [ ] **OA-08**: v1.5 reporting describes KAM/KFM as estimated PHC load proxies, not true medial contact force or full inverse-dynamics joint contact force.
+
 ## v2 Requirements
 
 Deferred beyond the current v1.0 roadmap. These are preserved from the source spec as future scope, not active milestone work.
@@ -117,12 +130,20 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EVAL-03 | Phase 5 | Pending |
 | EVAL-04 | Phase 5 | Pending |
 | EVAL-05 | Phase 5 | Pending |
+| OA-01 | Phase 9 | Pending |
+| OA-02 | Phase 9 | Pending |
+| OA-03 | Phase 9 | Pending |
+| OA-04 | Phase 9 | Pending |
+| OA-05 | Phase 9 | Pending |
+| OA-06 | Phase 9 | Pending |
+| OA-07 | Phase 9 | Pending |
+| OA-08 | Phase 9 | Pending |
 
 **Coverage:**
-- v1 requirements: 25 total
-- Mapped to phases: 25
+- v1/v1.5 requirements: 33 total
+- Mapped to phases: 33
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-27*
-*Last updated: 2026-04-27 after roadmap creation*
+*Last updated: 2026-04-29 after PHC-Pain v1.5 OA knee load proxy ingest*
