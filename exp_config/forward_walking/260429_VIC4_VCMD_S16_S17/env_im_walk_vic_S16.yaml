@@ -5,8 +5,8 @@ disable_multiprocessing: False
 
 env:
   motion_file: "sample_data/amass_walking_3clips_seamless_60s_v9.pkl"
-  num_envs: 256          # match S17 for clean A/B; smaller spike at resample fits 15G cap
-  numEnvs: 256
+  num_envs: 384          # in-place knee_angle refactor removed fragmentation; 384 fits 15G now
+  numEnvs: 384
   env_spacing: 5
   envSpacing: 5
   episode_length: 300

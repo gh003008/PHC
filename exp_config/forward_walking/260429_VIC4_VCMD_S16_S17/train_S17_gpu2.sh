@@ -28,7 +28,7 @@ python phc/run.py \
   --task HumanoidImVICCmdMultiClip \
   --cfg_env exp_config/forward_walking/260429_VIC4_VCMD_S16_S17/env_im_walk_vic_S17.yaml \
   --cfg_train exp_config/forward_walking/260429_VIC4_VCMD_S16_S17/im_walk_vic.yaml \
-  --headless --num_envs 256 --no_log \
+  --headless --num_envs 384 --no_log \
   --experiment VIC4_VCMD_S17
 
 echo "=== Job finished: $(date) ==="

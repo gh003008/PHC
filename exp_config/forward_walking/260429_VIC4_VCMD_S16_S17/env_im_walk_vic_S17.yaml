@@ -5,8 +5,8 @@ disable_multiprocessing: False
 
 env:
   motion_file: "sample_data/amass_walking_3clips_seamless_60s_v9.pkl"
-  num_envs: 256          # match S16 for clean A/B (S16 OOM at 384 with knee_angle path)
-  numEnvs: 256
+  num_envs: 384          # match S16 (S16 fixed via in-place knee_angle refactor)
+  numEnvs: 384
   env_spacing: 5
   envSpacing: 5
   episode_length: 300
