@@ -189,6 +189,42 @@ def _handle_events(env):
             sys.exit(0)
 
 
+def _draw_forward_arrow(env):
+    """Draw a v_cmd-scaled forward arrow above env 0's head.
+    Color: blue (slow) → red (fast) on (v_cmd - V_CMD_MIN) / (V_CMD_MAX - V_CMD_MIN)."""
+    if env.viewer is None:
+        return
+    env.gym.clear_lines(env.viewer)
+    root = env._humanoid_root_states[0].detach().cpu().numpy()
+    pos = root[:3]
+    quat = root[3:7]
+    x, y, z, w = quat
+    fwd_x = 1 - 2 * (y * y + z * z)
+    fwd_y = 2 * (x * y + w * z)
+    norm = float(np.sqrt(fwd_x ** 2 + fwd_y ** 2)) + 1e-8
+    fwd_x /= norm
+    fwd_y /= norm
+    head_z = pos[2] + 0.6
+    v = _STATE["v_cmd_ramped"]
+    scale = (v / V_CMD_MAX) * ARROW_LEN_AT_VHI
+    t_color = float(np.clip(
+        (v - V_CMD_MIN) / max(V_CMD_MAX - V_CMD_MIN, 1e-6), 0.0, 1.0))
+    color = np.array([t_color, 0.0, 1.0 - t_color], dtype=np.float32)
+    sx, sy = pos[0], pos[1]
+    ex, ey = sx + fwd_x * scale, sy + fwd_y * scale
+    main = np.array([sx, sy, head_z, ex, ey, head_z], dtype=np.float32)
+    env.gym.add_lines(env.viewer, env.envs[0], 1, main, color)
+    head_size = 0.12
+    lx = ex - fwd_x * head_size + fwd_y * head_size * 0.5
+    ly = ey - fwd_y * head_size - fwd_x * head_size * 0.5
+    rx = ex - fwd_x * head_size - fwd_y * head_size * 0.5
+    ry = ey - fwd_y * head_size + fwd_x * head_size * 0.5
+    env.gym.add_lines(env.viewer, env.envs[0], 1,
+                      np.array([ex, ey, head_z, lx, ly, head_z], dtype=np.float32), color)
+    env.gym.add_lines(env.viewer, env.envs[0], 1,
+                      np.array([ex, ey, head_z, rx, ry, head_z], dtype=np.float32), color)
+
+
 def _install_render_hook():
     from phc.env.tasks.humanoid import Humanoid
     orig_render = Humanoid.render
@@ -197,6 +233,7 @@ def _install_render_hook():
         _maybe_subscribe_keys(self)
         _handle_events(self)
         _maybe_switch_clip(self)
+        _draw_forward_arrow(self)
         _STATE["step"] += 1
         if _STATE["step"] % 3 == 0:
             _write_panel_state()
