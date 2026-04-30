@@ -185,7 +185,7 @@ class Panel:
                 self.ratio_lbl.config(text=f"retime ratio  {ratio:.3f}x")
                 self.step_lbl.config(text=f"step  {step}")
                 self.pause_lbl.config(text="PAUSED" if paused else "")
-        except Exception:
+        except (OSError, json.JSONDecodeError, ValueError):
             pass
         self.root.after(100, self.tick)
 

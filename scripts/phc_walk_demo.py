@@ -76,8 +76,6 @@ _STATE = {
     "step": 0,
     "paused": False,
     "subs_ready": False,
-    "fall_count": 0,
-    "term_height": 0.15,
 }
 
 _REC = {
@@ -108,7 +106,7 @@ def _write_panel_state():
                 "v_min": V_CMD_MIN,
                 "v_max": V_CMD_MAX,
             }, f)
-    except Exception:
+    except (OSError, IOError, TypeError):
         pass
 
 
@@ -123,7 +121,7 @@ def _read_panel_input():
             inp = json.load(f)
         os.remove(PANEL_INPUT_PATH)
         return inp
-    except Exception:
+    except (OSError, json.JSONDecodeError):
         return None
 
 
@@ -194,7 +192,6 @@ def _handle_events(env):
             _STATE["v_cmd_target"] = V_CMD_MIN + (k - 1) / 8.0 * (V_CMD_MAX - V_CMD_MIN)
         elif a == "demo_reset":
             env.reset_buf[0] = 1
-            _STATE["fall_count"] = 0
             print(f"[demo] reset (R) — v_cmd target stays at {_STATE['v_cmd_target']:.3f}")
         elif a == "demo_pause":
             _STATE["paused"] = not _STATE["paused"]
@@ -211,7 +208,6 @@ def _handle_events(env):
             _STATE["v_cmd_target"] = float(np.clip(v, V_CMD_MIN, V_CMD_MAX))
         if inp.get("reset"):
             env.reset_buf[0] = 1
-            _STATE["fall_count"] = 0
         if inp.get("pause_toggle"):
             _STATE["paused"] = not _STATE["paused"]
             env.paused = _STATE["paused"]
