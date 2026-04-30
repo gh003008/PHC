@@ -65,6 +65,57 @@ from isaacgym import gymapi  # noqa: F401
 import numpy as np
 
 
+# Module-level mutable state shared between monkey-patches and main thread.
+_STATE = {
+    "v_cmd_target": V_CMD_INIT,
+    "v_cmd_ramped": V_CMD_INIT,
+    "active_clip": 1,                 # index into V_NATURAL
+    "v_natural": V_NATURAL[1],
+    "retime_ratio": 1.0,
+    "v_actual": 0.0,
+    "step": 0,
+    "paused": False,
+    "subs_ready": False,
+    "fall_count": 0,
+    "term_height": 0.15,
+}
+
+
+def _write_panel_state():
+    """Dump _STATE to /tmp/phc_walk_state.json for the Tk panel to read."""
+    try:
+        with open(PANEL_STATE_PATH, "w") as f:
+            json.dump({
+                "v_cmd_target": _STATE["v_cmd_target"],
+                "v_cmd_ramped": _STATE["v_cmd_ramped"],
+                "active_clip": _STATE["active_clip"],
+                "v_natural": _STATE["v_natural"],
+                "retime_ratio": _STATE["retime_ratio"],
+                "v_actual": _STATE["v_actual"],
+                "step": _STATE["step"],
+                "paused": _STATE["paused"],
+                "v_min": V_CMD_MIN,
+                "v_max": V_CMD_MAX,
+            }, f)
+    except Exception:
+        pass
+
+
+def _read_panel_input():
+    """If panel wrote a new v_cmd_target, consume it.
+    Panel writes {'v_cmd_target': float, 'reset': bool, 'pause_toggle': bool}
+    and we delete the file after reading so each input is single-shot."""
+    if not os.path.exists(PANEL_INPUT_PATH):
+        return None
+    try:
+        with open(PANEL_INPUT_PATH) as f:
+            inp = json.load(f)
+        os.remove(PANEL_INPUT_PATH)
+        return inp
+    except Exception:
+        return None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--record_seconds", type=int, default=0,
@@ -96,6 +147,8 @@ def main():
     print(f"[demo] v_cmd range: [{V_CMD_MIN:.2f}, {V_CMD_MAX:.2f}]  init={V_CMD_INIT}")
     print(f"[demo] keys:  ↑/↓ ±{V_CMD_KEY_STEP}  |  1..9 snap  |  R reset  |  P pause  |  Q quit")
     print("=" * 70)
+
+    _write_panel_state()  # initial state for panel to display at boot
 
     import runpy
     try:
