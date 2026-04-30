@@ -208,6 +208,37 @@ def _install_render_hook():
     Humanoid.render = patched_render
 
 
+def _ramp_v_cmd(env_dt):
+    """Smooth v_cmd_ramped toward v_cmd_target with max_accel rate limit.
+    Called once per pre_physics_step (so dt = sim physics dt, not render dt)."""
+    delta_max = V_CMD_MAX_ACCEL * env_dt
+    diff = _STATE["v_cmd_target"] - _STATE["v_cmd_ramped"]
+    step = max(-delta_max, min(delta_max, diff))
+    _STATE["v_cmd_ramped"] += step
+
+
+def _install_pre_physics_patch():
+    """Patch Humanoid.pre_physics_step to:
+      1. Ramp v_cmd_ramped toward v_cmd_target.
+      2. Accumulate dt × (v_cmd_ramped/v_natural - 1.0) into _motion_start_times_offset
+         so reference motion advances at the v_cmd-scaled rate.
+    The base class's pre_physics_step is preserved by calling orig at the end."""
+    from phc.env.tasks.humanoid import Humanoid
+    orig_pre = Humanoid.pre_physics_step
+
+    def patched_pre(self, actions):
+        if not _STATE["paused"]:
+            _ramp_v_cmd(self.dt)
+            v_natural = _STATE["v_natural"]
+            ratio = _STATE["v_cmd_ramped"] / v_natural
+            _STATE["retime_ratio"] = ratio
+            # Broadcast to all envs (we use NUM_ENVS=2 with the same v_cmd).
+            self._motion_start_times_offset += self.dt * (ratio - 1.0)
+        return orig_pre(self, actions)
+
+    Humanoid.pre_physics_step = patched_pre
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--record_seconds", type=int, default=0,
@@ -241,6 +272,7 @@ def main():
     print("=" * 70)
 
     _install_render_hook()
+    _install_pre_physics_patch()
     _write_panel_state()  # initial state for panel to display at boot
 
     import runpy
