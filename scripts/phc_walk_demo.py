@@ -225,6 +225,23 @@ def _draw_forward_arrow(env):
                       np.array([ex, ey, head_z, rx, ry, head_z], dtype=np.float32), color)
 
 
+def _measure_v_actual(env):
+    """Read env 0's planar root velocity magnitude → _STATE['v_actual']."""
+    import torch
+    root_vel = env._humanoid_root_states[0, 7:10]
+    _STATE["v_actual"] = float(torch.linalg.norm(root_vel[:2]).item())
+
+
+def _lock_camera(env):
+    """Quartering follow-shot of env 0's pelvis."""
+    if env.viewer is None:
+        return
+    pos = env._humanoid_root_states[0, :3].detach().cpu().numpy()
+    cam_pos = gymapi.Vec3(float(pos[0] - 3.0), float(pos[1] - 3.0), float(pos[2] + 1.5))
+    cam_target = gymapi.Vec3(float(pos[0]), float(pos[1]), float(pos[2]))
+    env.gym.viewer_camera_look_at(env.viewer, None, cam_pos, cam_target)
+
+
 def _install_render_hook():
     from phc.env.tasks.humanoid import Humanoid
     orig_render = Humanoid.render
@@ -234,7 +251,16 @@ def _install_render_hook():
         _handle_events(self)
         _maybe_switch_clip(self)
         _draw_forward_arrow(self)
+        _measure_v_actual(self)
+        _lock_camera(self)
         _STATE["step"] += 1
+        if _STATE["step"] % LOG_STEP_INTERVAL == 0:
+            print(f"[demo] step={_STATE['step']:6d}  "
+                  f"v_target={_STATE['v_cmd_target']:.3f}  "
+                  f"v_ramped={_STATE['v_cmd_ramped']:.3f}  "
+                  f"v_actual={_STATE['v_actual']:.3f}  "
+                  f"clip={_STATE['active_clip']}  "
+                  f"ratio={_STATE['retime_ratio']:.3f}")
         if _STATE["step"] % 3 == 0:
             _write_panel_state()
         if _STATE["paused"]:
