@@ -134,7 +134,7 @@ def find_checkpoint(slot, epoch):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--slot', choices=['S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S12', 'S13', 'S14', 'S15'], required=True)
+    ap.add_argument('--slot', choices=['S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S12', 'S13', 'S14', 'S15', 'S16', 'S17', 'S18', 'S19'], required=True)
     ap.add_argument('--epoch', type=int, default=-1)
     ap.add_argument('--num_envs', type=int, default=4)
     ap.add_argument('--record_seconds', type=int, default=20)
@@ -152,7 +152,11 @@ def main():
     os.makedirs(record_dir)
     os.makedirs(args.out_dir, exist_ok=True)
 
-    if args.slot in ('S12', 'S13', 'S14', 'S15'):
+    if args.slot in ('S18', 'S19'):
+        exp_dir = 'exp_config/forward_walking/260501_VIC4_VCMD_S18_S19'
+    elif args.slot in ('S16', 'S17'):
+        exp_dir = 'exp_config/forward_walking/260429_VIC4_VCMD_S16_S17'
+    elif args.slot in ('S12', 'S13', 'S14', 'S15'):
         exp_dir = 'exp_config/forward_walking/260428_VIC4_VCMD_v9'
     elif args.slot in ('S9', 'S10', 'S11'):
         exp_dir = 'exp_config/forward_walking/260428_VIC4_VCMD_v8'
