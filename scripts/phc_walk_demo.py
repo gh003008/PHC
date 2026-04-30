@@ -116,6 +116,25 @@ def _read_panel_input():
         return None
 
 
+def _spawn_panel(host_display: str | None) -> subprocess.Popen | None:
+    """Launch phc_walk_demo_panel.py in a separate process so it stays bound to
+    the user's real DISPLAY even if PHC swaps to a virtual display. Returns the
+    Popen handle or None if spawn failed."""
+    panel_script = os.path.join(_THIS_DIR, "phc_walk_demo_panel.py")
+    env = os.environ.copy()
+    if host_display:
+        env["DISPLAY"] = host_display
+    try:
+        return subprocess.Popen([sys.executable, panel_script],
+                                env=env,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                start_new_session=True)
+    except Exception as e:
+        print(f"[demo] panel spawn failed: {e}")
+        return None
+
+
 _KEY_BINDINGS = [
     ("v_up", "KEY_UP"),
     ("v_down", "KEY_DOWN"),
@@ -380,16 +399,20 @@ def main():
         "env.episode_length=300",
     ]
 
+    _install_render_hook()
+    _install_pre_physics_patch()
+    host_display = os.environ.get("DISPLAY", "")
+    _write_panel_state()
+    panel_proc = _spawn_panel(host_display)
+    if panel_proc is not None:
+        print(f"[demo] panel spawned (pid={panel_proc.pid}) on DISPLAY={host_display!r}")
+
     print("=" * 70)
     print(f"[demo] EXP={EXP_NAME} LEARNING={LEARNING}")
     print(f"[demo] motion={MOTION_FILE}")
     print(f"[demo] v_cmd range: [{V_CMD_MIN:.2f}, {V_CMD_MAX:.2f}]  init={V_CMD_INIT}")
     print(f"[demo] keys:  ↑/↓ ±{V_CMD_KEY_STEP}  |  1..9 snap  |  R reset  |  P pause  |  Q quit")
     print("=" * 70)
-
-    _install_render_hook()
-    _install_pre_physics_patch()
-    _write_panel_state()  # initial state for panel to display at boot
 
     import runpy
     try:
