@@ -116,6 +116,98 @@ def _read_panel_input():
         return None
 
 
+_KEY_BINDINGS = [
+    ("v_up", "KEY_UP"),
+    ("v_down", "KEY_DOWN"),
+    ("v_set_1", "KEY_1"),
+    ("v_set_2", "KEY_2"),
+    ("v_set_3", "KEY_3"),
+    ("v_set_4", "KEY_4"),
+    ("v_set_5", "KEY_5"),
+    ("v_set_6", "KEY_6"),
+    ("v_set_7", "KEY_7"),
+    ("v_set_8", "KEY_8"),
+    ("v_set_9", "KEY_9"),
+    ("demo_reset", "KEY_R"),
+    ("demo_pause", "KEY_P"),
+    ("demo_quit", "KEY_Q"),
+]
+
+
+def _maybe_subscribe_keys(env):
+    if _STATE["subs_ready"] or env.viewer is None:
+        return
+    for action_name, key_attr in _KEY_BINDINGS:
+        key_code = getattr(gymapi, key_attr)
+        env.gym.subscribe_viewer_keyboard_event(env.viewer, key_code, action_name)
+    _STATE["subs_ready"] = True
+    print("[demo] keyboard subscriptions registered")
+
+
+def _handle_events(env):
+    """Poll keyboard + panel input; update _STATE['v_cmd_target'] and trigger reset/pause/quit."""
+    if env.viewer is None:
+        return
+    # Keyboard events
+    for evt in env.gym.query_viewer_action_events(env.viewer):
+        if evt.value <= 0:
+            continue
+        a = evt.action
+        if a == "v_up":
+            _STATE["v_cmd_target"] = float(np.clip(
+                _STATE["v_cmd_target"] + V_CMD_KEY_STEP, V_CMD_MIN, V_CMD_MAX))
+        elif a == "v_down":
+            _STATE["v_cmd_target"] = float(np.clip(
+                _STATE["v_cmd_target"] - V_CMD_KEY_STEP, V_CMD_MIN, V_CMD_MAX))
+        elif a.startswith("v_set_"):
+            k = int(a.split("_")[-1])  # 1..9
+            _STATE["v_cmd_target"] = V_CMD_MIN + (k - 1) / 8.0 * (V_CMD_MAX - V_CMD_MIN)
+        elif a == "demo_reset":
+            env.reset_buf[0] = 1
+            _STATE["fall_count"] = 0
+            print(f"[demo] reset (R) — v_cmd target stays at {_STATE['v_cmd_target']:.3f}")
+        elif a == "demo_pause":
+            _STATE["paused"] = not _STATE["paused"]
+            env.paused = _STATE["paused"]
+            print(f"[demo] {'PAUSED' if _STATE['paused'] else 'RESUMED'}")
+        elif a == "demo_quit":
+            print("[demo] quit (Q)")
+            sys.exit(0)
+    # Panel input (single-shot)
+    inp = _read_panel_input()
+    if inp is not None:
+        if "v_cmd_target" in inp:
+            v = float(inp["v_cmd_target"])
+            _STATE["v_cmd_target"] = float(np.clip(v, V_CMD_MIN, V_CMD_MAX))
+        if inp.get("reset"):
+            env.reset_buf[0] = 1
+            _STATE["fall_count"] = 0
+        if inp.get("pause_toggle"):
+            _STATE["paused"] = not _STATE["paused"]
+            env.paused = _STATE["paused"]
+        if inp.get("quit"):
+            sys.exit(0)
+
+
+def _install_render_hook():
+    from phc.env.tasks.humanoid import Humanoid
+    orig_render = Humanoid.render
+
+    def patched_render(self, sync_frame_time=False):
+        _maybe_subscribe_keys(self)
+        _handle_events(self)
+        _STATE["step"] += 1
+        if _STATE["step"] % 3 == 0:  # ~10 Hz panel state writes
+            _write_panel_state()
+        if _STATE["paused"]:
+            if self.viewer is not None:
+                self.gym.draw_viewer(self.viewer, self.sim, True)
+            return None
+        return orig_render(self, sync_frame_time)
+
+    Humanoid.render = patched_render
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--record_seconds", type=int, default=0,
@@ -148,6 +240,7 @@ def main():
     print(f"[demo] keys:  ↑/↓ ±{V_CMD_KEY_STEP}  |  1..9 snap  |  R reset  |  P pause  |  Q quit")
     print("=" * 70)
 
+    _install_render_hook()
     _write_panel_state()  # initial state for panel to display at boot
 
     import runpy
