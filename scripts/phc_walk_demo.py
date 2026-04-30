@@ -80,6 +80,17 @@ _STATE = {
     "term_height": 0.15,
 }
 
+_REC = {
+    "enabled": False,
+    "target_frames": 0,
+    "frame_count": 0,
+    "record_dir": "",
+    "fps": 30,
+    "out_dir": "videos",
+    "out_name": "phc_walk_demo",
+    "done": False,
+}
+
 
 def _write_panel_state():
     """Dump _STATE to /tmp/phc_walk_state.json for the Tk panel to read."""
@@ -286,7 +297,23 @@ def _install_render_hook():
             if self.viewer is not None:
                 self.gym.draw_viewer(self.viewer, self.sim, True)
             return None
-        return orig_render(self, sync_frame_time)
+        ret = orig_render(self, sync_frame_time)
+        # Recording (after rendering so the frame includes everything)
+        if _REC["enabled"] and not _REC["done"] and self.viewer is not None:
+            img_path = os.path.join(_REC["record_dir"],
+                                    f"frame_{_REC['frame_count']:06d}.png")
+            try:
+                self.gym.write_viewer_image_to_file(self.viewer, img_path)
+            except Exception as e:
+                print(f"[rec] capture failed at frame {_REC['frame_count']}: {e}")
+            _REC["frame_count"] += 1
+            if _REC["frame_count"] % 30 == 0:
+                print(f"[rec] frame {_REC['frame_count']}/{_REC['target_frames']}", flush=True)
+            if _REC["frame_count"] >= _REC["target_frames"]:
+                print(f"[rec] target reached, exiting", flush=True)
+                _REC["done"] = True
+                sys.exit(0)
+        return ret
 
     Humanoid.render = patched_render
 
@@ -380,7 +407,22 @@ def main():
                     help="If > 0, capture frames and save mp4 then exit.")
     ap.add_argument("--fps", type=int, default=30)
     ap.add_argument("--out_dir", default="videos")
+    ap.add_argument("--out_name", default="phc_walk_demo")
     args = ap.parse_args()
+
+    if args.record_seconds > 0:
+        _REC["enabled"] = True
+        _REC["target_frames"] = args.record_seconds * args.fps
+        _REC["fps"] = args.fps
+        _REC["out_dir"] = args.out_dir
+        _REC["out_name"] = args.out_name
+        _REC["record_dir"] = f"/tmp/record_frames_{args.out_name}"
+        if os.path.exists(_REC["record_dir"]):
+            shutil.rmtree(_REC["record_dir"])
+        os.makedirs(_REC["record_dir"])
+        os.makedirs(args.out_dir, exist_ok=True)
+        print(f"[rec] enabled — target {_REC['target_frames']} frames "
+              f"({args.record_seconds}s @ {args.fps}fps) → {_REC['record_dir']}")
 
     sys.argv = [
         "run_hydra.py",
@@ -419,6 +461,27 @@ def main():
         runpy.run_path("phc/run_hydra.py", run_name="__main__")
     except SystemExit:
         pass
+
+    # Combine PNGs to mp4 if recording was on
+    if _REC["enabled"] and _REC["frame_count"] > 0:
+        out_path = os.path.join(_REC["out_dir"], f"{_REC['out_name']}.mp4")
+        ffmpeg_bin = shutil.which("ffmpeg") or "/home/exolab/miniconda3/bin/ffmpeg"
+        cmd = [
+            ffmpeg_bin, "-y",
+            "-framerate", str(_REC["fps"]),
+            "-i", os.path.join(_REC["record_dir"], "frame_%06d.png"),
+            "-c:v", "libopenh264",
+            "-pix_fmt", "yuv420p",
+            out_path,
+        ]
+        print(f"[rec] combining frames: {' '.join(cmd)}")
+        subprocess.run(cmd, check=False)
+        if os.path.exists(out_path):
+            size_mb = os.path.getsize(out_path) / 1024 / 1024
+            print(f"[rec] saved {out_path} ({size_mb:.1f} MB)")
+            shutil.rmtree(_REC["record_dir"])
+        else:
+            print(f"[rec] WARN: ffmpeg did not produce {out_path}; PNGs kept at {_REC['record_dir']}")
 
 
 if __name__ == "__main__":
