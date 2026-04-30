@@ -196,8 +196,9 @@ def _install_render_hook():
     def patched_render(self, sync_frame_time=False):
         _maybe_subscribe_keys(self)
         _handle_events(self)
+        _maybe_switch_clip(self)
         _STATE["step"] += 1
-        if _STATE["step"] % 3 == 0:  # ~10 Hz panel state writes
+        if _STATE["step"] % 3 == 0:
             _write_panel_state()
         if _STATE["paused"]:
             if self.viewer is not None:
@@ -215,6 +216,58 @@ def _ramp_v_cmd(env_dt):
     diff = _STATE["v_cmd_target"] - _STATE["v_cmd_ramped"]
     step = max(-delta_max, min(delta_max, diff))
     _STATE["v_cmd_ramped"] += step
+
+
+def _select_clip(v_cmd, current):
+    """Hysteresis: only switch when v_cmd crosses midpoint by HYSTERESIS margin.
+    Returns the new active_clip index (0/1/2)."""
+    if current == 0:
+        if v_cmd > MIDPOINT_AB + HYSTERESIS:
+            return 1
+        return 0
+    if current == 1:
+        if v_cmd < MIDPOINT_AB - HYSTERESIS:
+            return 0
+        if v_cmd > MIDPOINT_BC + HYSTERESIS:
+            return 2
+        return 1
+    if current == 2:
+        if v_cmd < MIDPOINT_BC - HYSTERESIS:
+            return 1
+        return 2
+    return current
+
+
+def _maybe_switch_clip(env):
+    """If v_cmd_ramped suggests a different clip than active, switch the env's
+    motion id at cycle boundary. We detect cycle boundary via cycle_count change."""
+    if not hasattr(env, "_sampled_motion_ids"):
+        return
+    # Compute current motion_time for env 0 to detect cycle boundary
+    if not hasattr(env, "_motion_lib"):
+        return
+    motion_id_t = env._sampled_motion_ids[0].item()
+    motion_len = env._motion_lib.get_motion_length(
+        env._sampled_motion_ids[:1]).item()
+    if motion_len <= 0:
+        return
+    motion_time = (env.progress_buf[0].item() * env.dt
+                   + env._motion_start_times[0].item()
+                   + env._motion_start_times_offset[0].item())
+    cycle_count = int(motion_time // motion_len)
+    last_cycle = _STATE.get("last_cycle_count", -1)
+    _STATE["last_cycle_count"] = cycle_count
+    if cycle_count <= last_cycle:
+        return  # not a new cycle yet (or first call)
+    # New cycle started — re-evaluate active clip
+    desired = _select_clip(_STATE["v_cmd_ramped"], _STATE["active_clip"])
+    if desired != _STATE["active_clip"]:
+        _STATE["active_clip"] = desired
+        _STATE["v_natural"] = V_NATURAL[desired]
+        # Set every env to the new motion id; motion_lib will sample from it.
+        env._sampled_motion_ids[:] = desired
+        print(f"[demo] cycle boundary — clip switch → {desired} "
+              f"(v_natural={V_NATURAL[desired]:.3f})")
 
 
 def _install_pre_physics_patch():
