@@ -4,14 +4,6 @@ No training. Multi-clip + per-step retime via _motion_start_times_offset
 accumulation. The pretrained phc_3 imitates the active retimed walking clip;
 v_cmd controls the playback rate.
 
-v2 fixes (vs scripts/phc_walk_demo_v1.py):
-- Clip switching now polls every CLIP_SWITCH_INTERVAL render steps (~2 s)
-  instead of waiting for cycle_count change, which was stale across episode
-  resets and tied to the 60 s clip length.
-- episode_length raised from 300 (5 s) to 99999 so the reference motion
-  doesn't get re-sampled to a random start every 5 s, eliminating the
-  visible jump at episode boundaries.
-
 Run:
   conda activate phc
   python scripts/phc_walk_demo.py
@@ -59,8 +51,6 @@ PANEL_STATE_PATH = "/tmp/phc_walk_state.json"
 PANEL_INPUT_PATH = "/tmp/phc_walk_input.json"
 ARROW_LEN_AT_VHI = 1.5
 LOG_STEP_INTERVAL = 60
-CLIP_SWITCH_INTERVAL = 60   # render steps between clip-switch polls (~2 s @ 30 fps)
-EPISODE_LENGTH = 99999      # effectively never auto-reset; phc_3 walks continuously
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _PHC_ROOT = os.path.dirname(_THIS_DIR)
@@ -355,19 +345,34 @@ def _select_clip(v_cmd, current):
 
 def _maybe_switch_clip(env):
     """If v_cmd_ramped suggests a different clip than active, switch the env's
-    motion id. Polls every CLIP_SWITCH_INTERVAL render steps (~2 s) instead of
-    waiting for the 60 s clip cycle boundary, which made switches unreachable
-    in v1."""
+    motion id at cycle boundary. We detect cycle boundary via cycle_count change."""
     if not hasattr(env, "_sampled_motion_ids"):
         return
-    if _STATE["step"] == 0 or _STATE["step"] % CLIP_SWITCH_INTERVAL != 0:
+    # Compute current motion_time for env 0 to detect cycle boundary
+    if not hasattr(env, "_motion_lib"):
         return
+    motion_id_t = env._sampled_motion_ids[0].item()
+    motion_len = env._motion_lib.get_motion_length(
+        env._sampled_motion_ids[:1]).item()
+    if motion_len <= 0:
+        return
+    motion_time = (env.progress_buf[0].item() * env.dt
+                   + env._motion_start_times[0].item()
+                   + env._motion_start_times_offset[0].item())
+    cycle_count = int(motion_time // motion_len)
+    last_cycle = _STATE.get("last_cycle_count", -1)
+    _STATE["last_cycle_count"] = cycle_count
+    if cycle_count <= last_cycle:
+        return  # not a new cycle yet (or first call)
+    # New cycle started — re-evaluate active clip
     desired = _select_clip(_STATE["v_cmd_ramped"], _STATE["active_clip"])
     if desired != _STATE["active_clip"]:
         _STATE["active_clip"] = desired
         _STATE["v_natural"] = V_NATURAL[desired]
+        # Set every env to the new motion id; motion_lib will sample from it.
         env._sampled_motion_ids[:] = desired
-        print(f"[demo] clip switch → {desired} (v_natural={V_NATURAL[desired]:.3f})")
+        print(f"[demo] cycle boundary — clip switch → {desired} "
+              f"(v_natural={V_NATURAL[desired]:.3f})")
 
 
 def _install_pre_physics_patch():
@@ -429,7 +434,7 @@ def main():
         f"env.env_spacing={ENV_SPACING}",
         f"env.motion_file={MOTION_FILE}",
         "env.cycle_motion=True",
-        f"env.episode_length={EPISODE_LENGTH}",
+        "env.episode_length=300",
     ]
 
     _install_render_hook()
