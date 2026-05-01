@@ -9,8 +9,8 @@ disable_multiprocessing: False
 
 env:
   motion_file: "sample_data/amass_walking_3clips_seamless_60s_v9.pkl"
-  num_envs: 64                          # smoke; server sbatch overrides to 512
-  numEnvs: 64
+  num_envs: 32                          # smoke; server sbatch overrides to 512. 4060 Ti 7.6 GB OOMs on backward at 64 envs due to frozen phc_3 PNN forward activations.
+  numEnvs: 32
   env_spacing: 5
   envSpacing: 5
   episode_length: 300                   # 5s @ 60Hz; server uses 600
@@ -97,7 +97,7 @@ env:
   hard_negative: False
   z_activation: "silu"
   kp_scale: 1
-  power_reward: False
+  power_reward: True   # Match phc_3; sizes self.reward_raw to 5 cols which AmpAgent's logger indexes (reward_raw[4]). We override the rewards so the actual power term is unused.
   hybridInitProb: 0.5
 
   plane:
@@ -112,9 +112,12 @@ robot:
     assetFileName: "mjcf/smpl_humanoid.xml"
 
 control:
-  control_mode: "pd"
+  # Match phc_3 training config (output/HumanoidIm/phc_3/.hydra/config.yaml).
+  # 'isaac_pd' lets IsaacGym handle PD via DOF props; 'pd' would require
+  # SMPL-specific p_gains/d_gains which humanoid.py only sets for h1/g1.
+  control_mode: "isaac_pd"
   powerScale: 1.0
-  action_scale: 0.5
+  action_scale: 1.0
 
 domain_rand:
   has_domain_rand: False

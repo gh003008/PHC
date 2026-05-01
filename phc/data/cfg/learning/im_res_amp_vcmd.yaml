@@ -91,7 +91,7 @@ params:
     grad_norm: 50.0
     e_clip: 0.2
     horizon_length: 32
-    minibatch_size: 512       # smoke: num_envs=64 × horizon=32 = 2048 total; must divide evenly
+    minibatch_size: 512       # smoke: num_envs=32 × horizon=32 = 1024 total; 1024/512=2 minibatches per epoch
     mini_epochs: 6
     critic_coef: 5
     clip_value: False
