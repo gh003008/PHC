@@ -56,7 +56,13 @@ params:
       input_dims: ["proprio", "v_cmd"]   # proprio + 1-D v_cmd
       mlp_units: [256, 256]
       activation: silu
-      sigma_init: -1.0
+      # sigma_init=-2.5 → std=0.082, close to phc_3's own action sigma (~0.055).
+      # Spec §3 originally specified -1.0 (std=0.37), but that adds ±37% noise on
+      # every PD target each step — humanoid wobbles and falls in ~17 steps no
+      # matter how good Δa_mu becomes. Smoke (500 ep, sigma=-1.0) confirmed this:
+      # eps_len 12.9 → 17.4, never escaping the noise floor. With -2.5 the frozen
+      # baseline's gait shines through from Ep 1 and residual learns finer Δa.
+      sigma_init: -2.5
       learn_sigma: False
 
     # AMP discriminator (unchanged from im_pnn_big.yaml)
