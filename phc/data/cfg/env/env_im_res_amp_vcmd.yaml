@@ -60,7 +60,11 @@ env:
   numTrajSamples: 3
   trajSampleTimestepInv: 3
   enableTaskObs: True
-  trackBodies: ["R_Ankle", "L_Ankle", "R_Wrist", "L_Wrist"]
+  # NOTE: trackBodies intentionally omitted so it defaults to _full_track_bodies
+  # (24 SMPL bodies). phc_3 was trained without this override (env=env_im_pnn,
+  # see output/HumanoidIm/phc_3/.hydra/overrides.yaml), giving obs_dim=934.
+  # Adding trackBodies here would break frozen-base obs compatibility.
+  # See 02_research_dev/260501_phc_3_obs_dim_investigation.md for full derivation.
   reward_specs:
     k_pos: 200
     k_rot: 10
