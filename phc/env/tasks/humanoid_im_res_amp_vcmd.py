@@ -160,6 +160,8 @@ class HumanoidImResAMPVCmd(HumanoidIm):
         # Re-sync _global_offset so new motion's t=0 root aligns with current humanoid root
         times = torch.zeros_like(self._motion_start_times[ids])
         root_res = self._motion_lib.get_root_pos_smpl(self._sampled_motion_ids[ids], times)
+        # motion_lib_base.get_root_pos_smpl always returns dict (verified 2026-05-01).
+        # v3 demo had a fallback for tensor returns; we drop it since the API is stable.
         new_root = root_res["root_pos"]
         self._global_offset[ids, :2] = self._humanoid_root_states[ids, :2] - new_root[:, :2]
         self._global_offset[ids, 2] = 0.0
