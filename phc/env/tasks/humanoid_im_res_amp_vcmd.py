@@ -170,7 +170,9 @@ class HumanoidImResAMPVCmd(HumanoidIm):
         self._active_clip = new_clip
 
     def pre_physics_step(self, actions):
-        # Apply queued clip switches BEFORE the base step (so motion_lib reads
-        # downstream see consistent motion_id + _global_offset).
         self._apply_clip_switches()
+        # Per-step retime: motion advances at v_cmd_ramped/v_natural rate.
+        v_natural_per_env = self._v_natural[self._active_clip]
+        ratio = self._v_cmd_ramped / v_natural_per_env  # (num_envs,)
+        self._motion_start_times_offset += self.dt * (ratio - 1.0)
         return super().pre_physics_step(actions)
