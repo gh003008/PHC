@@ -59,6 +59,7 @@ from learning import amp_network_builder
 from learning import amp_network_mcp_builder
 from learning import amp_network_pnn_builder
 from phc.learning import res_amp_network
+from phc.learning import res_amp_agent
 
 
 from env.tasks import humanoid_amp_task
@@ -209,7 +210,9 @@ def build_alg_runner(algo_observer):
 
     runner.algo_factory.register_builder('im_amp', lambda **kwargs: im_amp.IMAmpAgent(**kwargs))
     runner.player_factory.register_builder('im_amp', lambda **kwargs: im_amp_players.IMAMPPlayerContinuous(**kwargs))
-    
+
+    runner.algo_factory.register_builder('im_amp_residual', lambda **kwargs: res_amp_agent.ResAMPVCmdAgent(**kwargs))
+
     return runner
 
 
