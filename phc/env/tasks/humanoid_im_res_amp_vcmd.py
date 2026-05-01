@@ -108,3 +108,67 @@ class HumanoidImResAMPVCmd(HumanoidIm):
         center = (self.V_CMD_MIN + self.V_CMD_MAX) * 0.5
         half = (self.V_CMD_MAX - self.V_CMD_MIN) * 0.5
         return (self._v_cmd_ramped - center) / half
+
+    # ------------------------------------------------------------------
+    # Multi-clip switching (port of scripts/phc_walk_demo.py v3 logic)
+    # ------------------------------------------------------------------
+
+    def _midpoints(self) -> tuple[float, float]:
+        """Return (mid_AB, mid_BC) for the 3-clip pool."""
+        v = self._v_natural
+        return float((v[0] + v[1]) * 0.5), float((v[1] + v[2]) * 0.5)
+
+    def _select_clip_for_env(self, env_id: int) -> int:
+        """Return desired clip idx for env_id given its v_cmd_ramped, with hysteresis."""
+        v_cmd = float(self._v_cmd_ramped[env_id].item())
+        cur = int(self._active_clip[env_id].item())
+        mid_ab, mid_bc = self._midpoints()
+        h = self.HYSTERESIS
+        if cur == 0:
+            return 1 if v_cmd > mid_ab + h else 0
+        if cur == 1:
+            if v_cmd < mid_ab - h:
+                return 0
+            if v_cmd > mid_bc + h:
+                return 2
+            return 1
+        if cur == 2:
+            return 1 if v_cmd < mid_bc - h else 2
+        return cur
+
+    def _apply_clip_switches(self):
+        """For each env where desired != active, atomically:
+          - update _sampled_motion_ids
+          - reset _motion_start_times / _motion_start_times_offset
+          - reset _global_offset to align new motion's t=0 root with current humanoid root
+          - clear ref_motion_cache so next query is fresh
+        Mirrors scripts/phc_walk_demo.py v3 _apply_pending_clip_switch."""
+        switch_mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        new_clip = self._active_clip.clone()
+        for env_id in range(self.num_envs):
+            desired = self._select_clip_for_env(env_id)
+            if desired != int(self._active_clip[env_id].item()):
+                switch_mask[env_id] = True
+                new_clip[env_id] = desired
+        if not switch_mask.any():
+            return
+        ids = switch_mask.nonzero(as_tuple=False).reshape(-1)
+        self._sampled_motion_ids[ids] = new_clip[ids]
+        self._motion_start_times[ids] = 0.0
+        self._motion_start_times_offset[ids] = 0.0
+        self.progress_buf[ids] = 0
+        # Re-sync _global_offset so new motion's t=0 root aligns with current humanoid root
+        times = torch.zeros_like(self._motion_start_times[ids])
+        root_res = self._motion_lib.get_root_pos_smpl(self._sampled_motion_ids[ids], times)
+        new_root = root_res["root_pos"]
+        self._global_offset[ids, :2] = self._humanoid_root_states[ids, :2] - new_root[:, :2]
+        self._global_offset[ids, 2] = 0.0
+        if hasattr(self, "ref_motion_cache"):
+            self.ref_motion_cache.clear()
+        self._active_clip = new_clip
+
+    def pre_physics_step(self, actions):
+        # Apply queued clip switches BEFORE the base step (so motion_lib reads
+        # downstream see consistent motion_id + _global_offset).
+        self._apply_clip_switches()
+        return super().pre_physics_step(actions)
