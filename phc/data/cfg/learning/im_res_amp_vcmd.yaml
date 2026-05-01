@@ -1,0 +1,97 @@
+# phc/data/cfg/learning/im_res_amp_vcmd.yaml
+# Residual + AMP learning on top of frozen phc_3.
+# Spec: docs/superpowers/specs/2026-05-01-phc-residual-amp-vcmd-design.md
+
+params:
+  seed: 0
+
+  algo:
+    name: im_amp_residual
+
+  model:
+    name: amp_residual
+
+  network:
+    name: amp_pnn_residual
+    separate: True
+    discrete: False
+
+    # Frozen base — same arch as phc_3 (im_pnn_big), loaded from checkpoint
+    frozen_base:
+      checkpoint: output/HumanoidIm/phc_3/Humanoid.pth
+      mlp_units: [2048, 1536, 1024, 1024, 512, 512]
+      activation: silu
+      num_actors: 3   # PNN primitives
+
+    # Residual head (spec §3 "ResAMPVCmdNetwork")
+    residual:
+      input_dims: ["proprio", "v_cmd"]   # proprio + 1-D v_cmd
+      mlp_units: [256, 256]
+      activation: silu
+      sigma_init: -1.0
+      learn_sigma: False
+
+    # AMP discriminator (unchanged from im_pnn_big.yaml)
+    disc:
+      units: [1024, 512]
+      activation: relu
+      initializer:
+        name: default
+
+  load_checkpoint: False    # we load phc_3 ourselves into frozen_base
+
+  config:
+    name: ResAMPVCmd
+    env_name: rlgpu
+    multi_gpu: False
+    ppo: True
+    mixed_precision: False
+    normalize_input: True
+    normalize_value: True
+    reward_shaper:
+      scale_value: 1.0
+    normalize_advantage: True
+    gamma: 0.99
+    tau: 0.95
+    learning_rate: 5e-5       # smaller than im_pnn_big since residual only
+    lr_schedule: constant
+    score_to_win: 20000
+    max_epochs: 500           # smoke; server overrides to 20000
+    save_best_after: 50
+    save_frequency: 250
+    print_stats: False
+    save_intermediate: True
+    entropy_coef: 0.0
+    truncate_grads: True
+    grad_norm: 50.0
+    e_clip: 0.2
+    horizon_length: 32
+    minibatch_size: 4096      # smoke (num_envs=64 × horizon=32 × 2)
+    mini_epochs: 6
+    critic_coef: 5
+    clip_value: False
+    bounds_loss_coef: 10
+
+    # AMP discriminator hyperparams (unchanged from im_pnn_big.yaml)
+    amp_obs_demo_buffer_size: 200000
+    amp_replay_buffer_size: 200000
+    amp_replay_keep_prob: 0.01
+    amp_batch_size: 512
+    amp_minibatch_size: 4096
+    disc_coef: 5
+    disc_logit_reg: 0.01
+    disc_grad_penalty: 5
+    disc_reward_scale: 2
+    disc_weight_decay: 0.0001
+    normalize_amp_input: True
+
+    # Reward decomposition (spec §5.4)
+    task_reward_w: 0.5     # r_track
+    disc_reward_w: 0.3     # r_amp
+    im_reward_w: 0.2       # r_im anchor
+    survive_reward_w: 1.0
+
+    amp_dropout: False
+
+    player:
+      games_num: 50000000
