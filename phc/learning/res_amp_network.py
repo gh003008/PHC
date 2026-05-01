@@ -1,11 +1,30 @@
 """Residual + AMP network for v_cmd-conditioned policy on top of frozen phc_3.
 
 Spec: docs/superpowers/specs/2026-05-01-phc-residual-amp-vcmd-design.md
+
+Three layers:
+  * ``ResMLPHead`` — small (proprio + v_cmd) → Δa MLP, fixed sigma.
+  * ``ResAMPVCmdNetwork`` — wraps a frozen phc_3 PNN + ``ResMLPHead`` and
+    speaks rl_games' continuous-AMP network protocol (forward returns
+    ``(mu, logstd, value, states)`` and exposes ``eval_disc``).
+  * ``ResAMPVCmdBuilder`` — rl_games-style network builder that the
+    learning yaml's ``params.network.name = amp_pnn_residual`` resolves to.
+
+The forward path takes the standard rl_games ``input_dict``:
+
+  obs_dict['obs']  -> [phc_3 obs (934-D) | v_cmd (1-D)]   (full obs vector)
+
+The frozen base reads obs[:, :-v_cmd_dim] (i.e. drop v_cmd → original 934-D);
+the residual head reads the full obs (proprio is just everything before v_cmd
+in PHC's flat obs, and we additionally append v_cmd so the head sees velocity
+context). This keeps the seam between Tasks 11 and 13 minimal.
 """
 from __future__ import annotations
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from phc.learning.amp_network_pnn_builder import AMPPNNBuilder
 
 
 class ResMLPHead(nn.Module):
@@ -28,45 +47,117 @@ class ResMLPHead(nn.Module):
             nn.SiLU(),
             nn.Linear(hidden[1], action_dim),
         )
+        # log_sigma is a (non-learnable by default) parameter so it survives
+        # state_dict round-trips and lives on the right device automatically.
         self.log_sigma = nn.Parameter(torch.full((action_dim,), float(sigma_init)),
                                        requires_grad=False)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         mu = self.mu(x)
-        sigma = self.log_sigma.exp().expand_as(mu)
-        return mu, sigma
+        logstd = self.log_sigma.expand_as(mu)
+        return mu, logstd
 
 
-class ResAMPVCmdNetwork(nn.Module):
-    """Wraps frozen phc_3 PNN + ResMLPHead. Output = a_base + clip(Δa, ±0.2).
+class ResAMPVCmdNetwork(AMPPNNBuilder.Network):
+    """Frozen phc_3 PNN + residual head, with full AMP critic/disc machinery.
 
-    The frozen base (phc_3) is loaded externally from a state_dict. This wrapper
-    just provides the forward path expected by rl_games' AmpAgent.
+    We subclass ``AMPPNNBuilder.Network`` to inherit:
+      - ``forward(obs_dict)`` (from AMPBuilder) glue between actor/critic
+      - ``eval_critic`` (separate MLP, built from yaml's mlp.units)
+      - ``_build_disc`` / ``eval_disc``
+      - sigma parameter setup
+
+    We override ``__init__`` to swap the actor path (replacing the trainable
+    PNN with a *frozen* phc_3 PNN) and add the residual head. We override
+    ``eval_actor`` to compute ``a_base + clip(Δa, ±0.2)``.
+
+    Note: the wrapping ``a2c_network.mu`` head from rl_games is unused
+    (phc_3 PNN columns already terminate in a 69-D linear) — we leave it
+    constructed by the parent for state_dict compatibility but ignore it.
     """
 
-    def __init__(self, frozen_base: nn.Module, residual_head: ResMLPHead,
-                 delta_clip: float = 0.2):
-        super().__init__()
-        self.frozen_base = frozen_base
-        for p in self.frozen_base.parameters():
-            p.requires_grad = False
-        self.frozen_base.eval()
-        self.residual_head = residual_head
-        self.delta_clip = float(delta_clip)
+    def __init__(self, params, **kwargs):
+        # AMPPNNBuilder.Network.__init__ will:
+        #   1. read self_obs_size / task_obs_size / task_obs_size_detail kwargs
+        #   2. construct a fresh trainable PNN (we'll discard it below)
+        #   3. build critic, disc, sigma per AMP/A2C base
+        super().__init__(params, **kwargs)
 
-    def forward(self, obs: torch.Tensor, ref: torch.Tensor, v_cmd: torch.Tensor,
-                proprio: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Returns (mu, sigma) for action distribution."""
+        # ---- Replace trainable PNN with frozen phc_3 ----
+        from phc.learning.res_amp_network import load_frozen_phc_3  # self-import for clarity
+        frozen_cfg = params.get("frozen_base", {}) if isinstance(params, dict) else {}
+        ckpt_path = frozen_cfg.get("checkpoint", "output/HumanoidIm/phc_3/Humanoid.pth")
+        # Load to CPU here; the rl_games framework will .to(device) the whole net later.
+        frozen = load_frozen_phc_3(ckpt_path, device="cpu")
+        for p in frozen.parameters():
+            p.requires_grad = False
+        # Discard the freshly-initialized self.pnn (built by AMPPNNBuilder.Network)
+        # and substitute the frozen one. We keep the attribute name `pnn`
+        # so any downstream PHC code that references `network.pnn` still works.
+        del self.pnn
+        self.pnn = frozen
+        # phc_3 was trained with `training_prim` final column index — the
+        # checkpoint's last actor (index num_prim-1) is the highest-quality one.
+        # We use the top column for inference; if yaml overrides, honor it.
+        self.training_prim = int(frozen_cfg.get("num_actors", getattr(self, "num_prim", 3))) - 1
+
+        # ---- Build residual head ----
+        residual_cfg = params.get("residual", {}) if isinstance(params, dict) else {}
+        # Residual input = full obs vector (proprio + v_cmd, in PHC flat layout)
+        action_dim = kwargs["actions_num"]
+        in_dim = kwargs["input_shape"][0]
+        hidden = tuple(residual_cfg.get("mlp_units", [256, 256]))
+        sigma_init = float(residual_cfg.get("sigma_init", -1.0))
+        self.residual_head = ResMLPHead(
+            in_dim=in_dim,
+            action_dim=action_dim,
+            hidden=hidden,
+            sigma_init=sigma_init,
+        )
+
+        self.delta_clip = float(params.get("delta_clip", 0.2)) if isinstance(params, dict) else 0.2
+
+        # v_cmd dim — assumed last entry of the obs vector. The env
+        # extends obs by 1 (Task 6: v_cmd observation extension).
+        self._v_cmd_dim = int(residual_cfg.get("v_cmd_dim", 1))
+
+    # ---- Actor path override ----
+    def eval_actor(self, obs_dict):
+        obs = obs_dict['obs']
+        # Frozen base sees the original phc_3 obs (drop v_cmd tail)
+        base_obs = obs[:, : obs.shape[-1] - self._v_cmd_dim] if self._v_cmd_dim > 0 else obs
+        # PNN inference: returns (final_col_out, [all_cols_out])
         with torch.no_grad():
-            a_base, _ = self.frozen_base(obs, ref)   # (N, 69)
-        # Residual: input is (proprio, v_cmd_norm)
-        x = torch.cat([proprio, v_cmd.unsqueeze(-1) if v_cmd.dim() == 1 else v_cmd], dim=-1)
-        delta_mu, delta_sigma = self.residual_head(x)
-        # Clip Δa to keep residual bounded
+            base_in = self.actor_cnn(base_obs)
+            base_in = base_in.contiguous().view(base_in.size(0), -1)
+            a_base, _ = self.pnn(base_in, idx=self.training_prim)
+
+        # Residual head sees the full obs (proprio + v_cmd)
+        delta_mu, delta_logstd = self.residual_head(obs)
         delta_mu = torch.clamp(delta_mu, -self.delta_clip, self.delta_clip)
+
         mu = a_base + delta_mu
-        # Sigma comes from residual only (base is deterministic given ref).
-        return mu, delta_sigma
+
+        if self.is_continuous:
+            # Use residual's own logstd (base is deterministic given obs).
+            return mu, delta_logstd
+
+        # Non-continuous paths: defer to parent (won't actually be hit in PHC).
+        return super().eval_actor(obs_dict)
+
+
+class ResAMPVCmdBuilder(AMPPNNBuilder):
+    """rl_games-style network builder.
+
+    Reads cfg from the learning yaml's ``params.network`` block (passed in
+    via ``load(params)``) and returns a ``ResAMPVCmdNetwork`` instance.
+    """
+
+    def build(self, name, **kwargs):
+        return ResAMPVCmdNetwork(self.params, **kwargs)
+
+    def __call__(self, name, **kwargs):
+        return self.build(name, **kwargs)
 
 
 def load_frozen_phc_3(checkpoint_path: str, device: str = "cuda:0") -> nn.Module:
@@ -159,27 +250,12 @@ if __name__ == "__main__":
     mu1, sigma1 = head(x)
     assert mu1.shape == (2, 69), mu1.shape
     assert sigma1.shape == (2, 69), sigma1.shape
-    assert sigma1.abs().min() > 0
     n_params = sum(p.numel() for p in head.parameters())
     print(f"OK ResMLPHead, params={n_params}")
 
-    # Mock frozen base: a deterministic identity-ish stub
-    class MockBase(nn.Module):
-        def forward(self, obs, ref):
-            return torch.zeros(obs.shape[0], 69), None
-    base = MockBase()
-    net = ResAMPVCmdNetwork(frozen_base=base, residual_head=head, delta_clip=0.2)
-    obs2 = torch.randn(4, 1000)
-    ref2 = torch.randn(4, 800)
-    proprio = torch.randn(4, 245)
-    v_cmd = torch.randn(4)
-    mu2, sigma2 = net(obs2, ref2, v_cmd, proprio)
-    assert mu2.shape == (4, 69)
-    assert sigma2.shape == (4, 69)
-    assert mu2.abs().max() <= 0.2 + 1e-6, "Δa should be clipped"
-    for p in net.frozen_base.parameters():
-        assert not p.requires_grad
-    print("OK ResAMPVCmdNetwork")
+    # Builder smoke (no actual ckpt → just import-ability)
+    b = ResAMPVCmdBuilder()
+    print(f"OK ResAMPVCmdBuilder instance: {b}")
 
     import os
     ckpt = "output/HumanoidIm/phc_3/Humanoid.pth"
