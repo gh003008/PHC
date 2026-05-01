@@ -37,6 +37,11 @@ cd ~/PHC
 #   --max_iterations 20000       (vs smoke's 500)
 #   --minibatch_size 8192        (512 envs × 32 horizon = 16384 buffer; 16384/8192 = 2 mini-batches)
 # AMP buffer sizes (200K) live in the _server learning yaml.
+#
+# Note: motion_lib_base.py respects SLURM_CPUS_PER_TASK to avoid forking
+# 32+ workers (mp.cpu_count()) — those CoW-inherit the parent's frozen-phc_3
+# RSS and OOM-kill the cgroup. With cpus-per-task=8 we get single-process
+# motion loading at boot (slightly slower, ~30s extra, but fits 15G).
 python phc/run.py \
     --task HumanoidImResAMPVCmd \
     --cfg_env phc/data/cfg/env/env_im_res_amp_vcmd.yaml \

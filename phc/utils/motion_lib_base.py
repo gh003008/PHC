@@ -232,6 +232,17 @@ class MotionLibBase():
         queue = manager.Queue()
         num_jobs = min(mp.cpu_count(), 64)
 
+        # VIC: respect Slurm cgroup CPU allocation. mp.cpu_count() returns
+        # the *node*'s CPU count, not the cgroup limit, so on shared servers
+        # we'd otherwise fork 32+ workers — each CoW-inherits the parent's
+        # ~5GB RSS (frozen phc_3 baseline) and the slurm --mem cgroup OOM-kills
+        # us before motion loading finishes. Cap at SLURM_CPUS_PER_TASK so that
+        # the `<= 8` branch below collapses to single-process loading on small
+        # cpu allocations.
+        slurm_cpus = os.environ.get('SLURM_CPUS_PER_TASK')
+        if slurm_cpus is not None:
+            num_jobs = min(num_jobs, int(slurm_cpus))
+
         if num_jobs <= 8 or not self.multi_thread:
             num_jobs = 1
         if flags.debug:
