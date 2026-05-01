@@ -11,6 +11,11 @@ v2 fixes (vs scripts/phc_walk_demo_v1.py):
 - episode_length raised from 300 (5 s) to 99999 so the reference motion
   doesn't get re-sampled to a random start every 5 s, eliminating the
   visible jump at episode boundaries.
+- On clip switch, force env reset (reset_buf=1) AND zero out
+  _motion_start_times_offset before the next render. Without this, the
+  stale _global_offset / accumulated retime offset get applied to the new
+  motion_id, which crashes motion_lib slerp with a CUDA device-side assert
+  the moment v_cmd is pushed high enough to trigger a switch.
 
 Run:
   conda activate phc
@@ -52,8 +57,8 @@ HYSTERESIS = 0.02
 MIDPOINT_AB = (V_NATURAL[0] + V_NATURAL[1]) / 2.0
 MIDPOINT_BC = (V_NATURAL[1] + V_NATURAL[2]) / 2.0
 
-NUM_ENVS = 2
-ENV_SPACING = 50
+NUM_ENVS = 3            # MUST be >= len(V_NATURAL): motion_lib subsets to num_envs
+ENV_SPACING = 50        # extras hidden far away; env 0 is the camera-followed one
 
 PANEL_STATE_PATH = "/tmp/phc_walk_state.json"
 PANEL_INPUT_PATH = "/tmp/phc_walk_input.json"
@@ -86,6 +91,7 @@ _STATE = {
     "step": 0,
     "paused": False,
     "subs_ready": False,
+    "pending_clip": None,             # set in render, applied in pre_physics_step
 }
 
 _REC = {
@@ -354,20 +360,55 @@ def _select_clip(v_cmd, current):
 
 
 def _maybe_switch_clip(env):
-    """If v_cmd_ramped suggests a different clip than active, switch the env's
-    motion id. Polls every CLIP_SWITCH_INTERVAL render steps (~2 s) instead of
-    waiting for the 60 s clip cycle boundary, which made switches unreachable
-    in v1."""
+    """Decide whether to switch clips and queue it.
+
+    The actual switch must happen in pre_physics_step, NOT here in render:
+    if we change motion_id mid-render, the same render's _update_marker
+    queries motion_lib with the new motion_id but the still-stale
+    _global_offset, which crashes slerp with a CUDA device-side assert.
+
+    Polls every CLIP_SWITCH_INTERVAL render steps (~2 s)."""
     if not hasattr(env, "_sampled_motion_ids"):
         return
     if _STATE["step"] == 0 or _STATE["step"] % CLIP_SWITCH_INTERVAL != 0:
         return
     desired = _select_clip(_STATE["v_cmd_ramped"], _STATE["active_clip"])
     if desired != _STATE["active_clip"]:
-        _STATE["active_clip"] = desired
-        _STATE["v_natural"] = V_NATURAL[desired]
-        env._sampled_motion_ids[:] = desired
-        print(f"[demo] clip switch → {desired} (v_natural={V_NATURAL[desired]:.3f})")
+        _STATE["pending_clip"] = desired
+
+
+def _apply_pending_clip_switch(env):
+    """Apply queued clip switch atomically: motion_id, motion times, AND
+    _global_offset all updated together so the next motion_lib query in this
+    same physics step is consistent. Called from the patched pre_physics_step
+    BEFORE the base class runs."""
+    desired = _STATE["pending_clip"]
+    if desired is None:
+        return
+    if not hasattr(env, "_sampled_motion_ids") or not hasattr(env, "_global_offset"):
+        _STATE["pending_clip"] = None
+        return
+    import torch
+    env._sampled_motion_ids[:] = desired
+    env._motion_start_times[:] = 0.0
+    env._motion_start_times_offset[:] = 0.0
+    if hasattr(env, "progress_buf"):
+        env.progress_buf[:] = 0
+    # Re-sync _global_offset to new motion's root pos at t=0 so the existing
+    # humanoid_root_states stays aligned with the new reference.
+    times = torch.zeros_like(env._motion_start_times)
+    root_res = env._motion_lib.get_root_pos_smpl(env._sampled_motion_ids, times)
+    new_root = root_res["root_pos"] if isinstance(root_res, dict) else root_res
+    env._global_offset[:, :2] = env._humanoid_root_states[:, :2] - new_root[:, :2]
+    if env._global_offset.shape[1] >= 3:
+        env._global_offset[:, 2] = 0.0
+    if hasattr(env, "ref_motion_cache"):
+        env.ref_motion_cache.clear()
+    _STATE["active_clip"] = desired
+    _STATE["v_natural"] = V_NATURAL[desired]
+    _STATE["pending_clip"] = None
+    print(f"[demo] clip switch → {desired} (v_natural={V_NATURAL[desired]:.3f}, "
+          f"global_offset re-synced)")
 
 
 def _install_pre_physics_patch():
@@ -380,6 +421,11 @@ def _install_pre_physics_patch():
     orig_pre = Humanoid.pre_physics_step
 
     def patched_pre(self, actions):
+        # Apply queued clip switch BEFORE the base step / motion-lib reads.
+        # Doing it here (not in render) guarantees motion_id and _global_offset
+        # are updated together, so this step's render won't query motion_lib
+        # with a stale offset and crash.
+        _apply_pending_clip_switch(self)
         if not _STATE["paused"]:
             _ramp_v_cmd(self.dt)
             v_natural = _STATE["v_natural"]
