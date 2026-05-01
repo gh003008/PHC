@@ -16,6 +16,31 @@ params:
     separate: True
     discrete: False
 
+    # Required by inherited AMPPNNBuilder.Network.load(params).
+    # The actual policy is frozen_base + residual; these blocks satisfy the
+    # rl_games builder's expected schema. mlp.units below describes the critic
+    # only (the actor is the frozen PNN + residual head).
+    space:
+      continuous:
+        mu_activation: None
+        sigma_activation: None
+        mu_init:
+          name: default
+        sigma_init:
+          name: const_initializer
+          val: -1.0
+        fixed_sigma: True
+        learn_sigma: False
+
+    mlp:
+      units: [1024, 512]
+      activation: silu
+      d2rl: False
+      initializer:
+        name: default
+      regularizer:
+        name: None
+
     # Frozen base — same arch as phc_3 (im_pnn_big), loaded from checkpoint
     frozen_base:
       checkpoint: output/HumanoidIm/phc_3/Humanoid.pth
