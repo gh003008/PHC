@@ -35,3 +35,15 @@ class ResAMPVCmdAgent(IMAmpAgent):
                 print("[ResAMPVCmdAgent] WARN: net has neither .frozen_base nor .pnn — base not frozen")
         else:
             print("[ResAMPVCmdAgent] WARN: net has no .frozen_base or .pnn attribute")
+
+    def calc_gradients(self, input_dict):
+        """Override to assert phc_3 base never gets gradients."""
+        super().calc_gradients(input_dict)
+        # Sanity: frozen base must not have grads
+        net = self.model.a2c_network
+        base = getattr(net, "frozen_base", None) or getattr(net, "pnn", None)
+        if base is not None:
+            for n, p in base.named_parameters():
+                if p.grad is not None and p.grad.abs().sum().item() > 0:
+                    raise RuntimeError(
+                        f"[ResAMPVCmdAgent] frozen_base param {n} got non-zero grad!")
