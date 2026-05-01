@@ -36,6 +36,11 @@ cd ~/PHC
 
 # Slot B differs from Slot A only by seed (1 vs 0) and exp_name suffix
 # (so checkpoints don't clobber Slot A's). All training hparams identical.
+#
+# Resume: --epoch 500 loads output/ResAMPVCmd_B_00000500.pth and continues
+# from that point (Slot B was cancelled at Ep ~600 to free up an idx slot;
+# we restart from the clean Ep 500 checkpoint to avoid relying on the
+# non-aligned "best" snapshot at ResAMPVCmd_B.pth).
 python phc/run.py \
     --task HumanoidImResAMPVCmd \
     --cfg_env phc/data/cfg/env/env_im_res_amp_vcmd.yaml \
@@ -47,6 +52,7 @@ python phc/run.py \
     --minibatch_size 8192 \
     --seed 1 \
     --experiment ResAMPVCmd_B \
+    --epoch 500 \
     --no_log
 
 echo "Job B ended at $(date)"
