@@ -93,12 +93,17 @@ def load_cfg(args):
     with open(os.path.join(os.getcwd(), args.cfg_env), 'r') as f:
         cfg = yaml.load(f, Loader=yaml.SafeLoader)
 
-    # Override number of environments if passed on the command line
+    # Override number of environments if passed on the command line.
+    # PHC yamls use both spellings: env creation (base_task.py:86) reads the
+    # snake_case 'num_envs', while rl_games num_actors (line 159 below) reads
+    # camelCase 'numEnvs'. Patch both so the buffer and the actual env agree.
     if args.num_envs > 0:
         cfg["env"]["numEnvs"] = args.num_envs
+        cfg["env"]["num_envs"] = args.num_envs
 
     if args.episode_length > 0:
         cfg["env"]["episodeLength"] = args.episode_length
+        cfg["env"]["episode_length"] = args.episode_length
 
     cfg["name"] = args.task
     cfg["headless"] = args.headless
