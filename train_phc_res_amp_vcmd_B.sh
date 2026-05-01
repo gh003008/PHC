@@ -1,17 +1,22 @@
 #!/bin/bash
-# Stage 2 sbatch SLOT B — parallel run on idx1 with seed=1.
+# Stage 2 sbatch SLOT B — parallel run on idx2 with seed=1.
 # Spec: same as Slot A (train_phc_res_amp_vcmd.sh). Slot B exists for
 # seed redundancy: PPO + AMP residual learning has noisy convergence,
 # and two seeds let us pick the better checkpoint at eval time.
+#
+# Originally targeted idx1 but job 4056 OOM-killed during motion-data
+# loading peak (15500MB MaxMemPerNode is partition cap). Switched to
+# idx2 — same A5000, same 15G cap, fresh cgroup. Slot A on idx0 with
+# identical mem cap runs fine; idx1 attempt caught a transient peak.
 #
 # Submit:  sbatch train_phc_res_amp_vcmd_B.sh
 # Monitor: squeue -u $USER  / tail -F logs/phc_res_amp_vcmd_B_<jobid>.out
 
 #SBATCH -J phc_res_amp_vcmd_B
-#SBATCH -p idx1
+#SBATCH -p idx2
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH --gres=gpu:idx1:1
+#SBATCH --gres=gpu:idx2:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=15G
 #SBATCH -t 48:00:00
