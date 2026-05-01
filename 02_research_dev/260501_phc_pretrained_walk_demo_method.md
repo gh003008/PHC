@@ -198,6 +198,66 @@ sys.argv = [..., f"env.episode_length={EPISODE_LENGTH}"]
 
 `phc_walk_demo.py` 의 docstring 상단에 v1 → v2 차이를 7-13 줄에 직접 명시해서 향후 유지보수자가 즉시 파악할 수 있게 했다. v1 파일도 `phc_walk_demo_v1.py` 로 보존되어 직접 비교 가능.
 
+### 5.4 Bug 3 — v_cmd 를 올리면 데모가 죽음 (v3 수정, commit 98e2644)
+
+v2 까지의 코드는 사실 클립 스위치가 **silently 실패** 하고 있었다. v_cmd 를 1.20 이상으로 올리면 다음 메시지와 함께 데모가 통째로 종료:
+
+```
+RuntimeError: CUDA error: device-side assert triggered
+  File "phc/utils/motion_lib_base.py", line 526
+    motion_len = self._motion_lengths[motion_ids]
+```
+
+**두 개의 버그가 중첩**:
+
+**Bug 3a — motion_lib 가 num_envs 만큼만 motion 을 로드함.**
+
+`motion_lib_base.py:205-210` 에서 `num_motion_to_load = len(skeleton_trees) = num_envs`. v2 까지 우리가 `NUM_ENVS=2` 로 박아놨었기 때문에 motion lib 의 `_motion_lengths` 는 길이 2. 그런데 우리는 `_sampled_motion_ids[:] = 2` (3번째 클립) 로 인덱스했다 → CUDA OOB. v1/v2 의 "clip switch → 2" 로그는 print 만 찍히고 motion_lib 입장에서는 silent OOB 였다.
+
+**수정**: `NUM_ENVS = 3` (V_NATURAL 길이와 같거나 그 이상). `sample_idxes = arange(3) % 3 = [0, 1, 2]` 로 3 개 클립 모두 로드.
+
+**Bug 3b — render 안에서 motion_id 를 바꾸면 같은 render 의 `_update_marker` 가 stale `_global_offset` 으로 motion_lib 를 query.**
+
+`Humanoid.render` → `_draw_task` → `_update_marker` → `_get_state_from_motionlib_cache(_sampled_motion_ids, ..., _global_offset)`. v2 의 `_maybe_switch_clip` 은 render 안에서 `_sampled_motion_ids` 만 바꾸고 `_global_offset` 은 새 motion 에 안 맞춘 상태로 계속 진행 → motion_lib 내부에서 인덱싱이 깨짐.
+
+**수정**: switch 결정과 적용을 분리.
+- `_maybe_switch_clip` (render 안): `_STATE['pending_clip']` 에 desired 값만 큐잉.
+- `_apply_pending_clip_switch` (pre_physics_step 맨 앞에서 실행): motion_id, motion_start_times, motion_start_times_offset, progress_buf, **`_global_offset` 까지 atomic 하게 갱신**. `_global_offset` 은 새 motion 의 t=0 root pos 와 현재 휴머노이드 root state 의 차이로 다시 계산. `ref_motion_cache` 도 invalidate.
+
+```python
+def _apply_pending_clip_switch(env):
+    desired = _STATE["pending_clip"]
+    if desired is None: return
+    env._sampled_motion_ids[:] = desired
+    env._motion_start_times[:] = 0.0
+    env._motion_start_times_offset[:] = 0.0
+    env.progress_buf[:] = 0
+    times = torch.zeros_like(env._motion_start_times)
+    root_res = env._motion_lib.get_root_pos_smpl(env._sampled_motion_ids, times)
+    new_root = root_res["root_pos"]
+    env._global_offset[:, :2] = env._humanoid_root_states[:, :2] - new_root[:, :2]
+    env._global_offset[:, 2] = 0.0
+    env.ref_motion_cache.clear()
+    _STATE["active_clip"] = desired
+    _STATE["v_natural"] = V_NATURAL[desired]
+    _STATE["pending_clip"] = None
+```
+
+**검증** (스모크 로그 발췌):
+```
+step= 1500  v_target=1.000  v_ramped=1.000  clip=1
+step= 1560  v_target=1.230  v_ramped=1.100  clip=1   ← v_cmd push 시작
+[demo] clip switch → 2 (v_natural=1.068, global_offset re-synced)
+step= 1620  v_target=1.230  v_ramped=1.230  clip=2   ← 정상 전환, crash 없음
+... (1620 → 2460 까지 clip=2 안정 유지)
+step= 2520  v_target=0.780  v_ramped=0.780  clip=2   ← 다시 v_cmd 0.78로 push
+[demo] clip switch → 1 (v_natural=0.975, global_offset re-synced)
+[demo] clip switch → 0 (v_natural=0.897, global_offset re-synced)
+step= 2640..3360  v_target=0.780  clip=0  v_actual≈0.78  ← 끝까지 안정
+```
+
+→ 양방향 모두 crash 없이 전환되고 v_actual 도 v_cmd 근처로 수렴. 95-line 코드 변경으로 해결.
+
 ---
 
 ## 6. 사용 방법
@@ -267,6 +327,8 @@ PHC base class는 일절 수정하지 않았다. 모든 변경은 두 monkey-pat
 ## 9. 변경 이력 (commit 단위)
 
 ```
+98e2644  phc_walk_demo: v3 — fix CUDA crash on clip switch (NUM_ENVS≥3 + atomic switch)
+7d1982c  docs(260501): PHC pretrained walk demo — method + v1→v2 fixes
 03ae0a7  phc_walk_demo: v2 — clip switching + continuous walking
 6fa2241  phc_walk_demo: cleanup — drop dead _STATE keys, narrow exception handlers
 9f086e4  phc_walk_demo: optional --record_seconds N flag
@@ -281,4 +343,4 @@ bb68357  phc_walk_demo: keyboard handlers + render hook
 13e09ae  phc_walk_demo: skeleton + boot via runpy
 ```
 
-— 11 tasks (subagent-driven-development) + v2 사용자 피드백 fix.
+— 11 tasks (subagent-driven-development) + v2 사용자 피드백 fix + v3 crash fix.
