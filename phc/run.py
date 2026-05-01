@@ -213,6 +213,9 @@ def build_alg_runner(algo_observer):
     runner.player_factory.register_builder('im_amp', lambda **kwargs: im_amp_players.IMAMPPlayerContinuous(**kwargs))
 
     runner.algo_factory.register_builder('im_amp_residual', lambda **kwargs: res_amp_agent.ResAMPVCmdAgent(**kwargs))
+    # Eval / --test path uses the same player as im_amp; the residual lives
+    # inside the network so the player doesn't need to know it's there.
+    runner.player_factory.register_builder('im_amp_residual', lambda **kwargs: im_amp_players.IMAMPPlayerContinuous(**kwargs))
 
     return runner
 
