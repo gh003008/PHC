@@ -13,7 +13,7 @@
 #SBATCH -n 1
 #SBATCH --gres=gpu:idx0:1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=20G
+#SBATCH --mem=15G
 #SBATCH -t 48:00:00
 #SBATCH -o logs/%x_%j.out
 #SBATCH -e logs/%x_%j.err
