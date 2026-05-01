@@ -1,0 +1,53 @@
+# phc/data/cfg/env/env_im_res_amp_vcmd.yaml
+# 1D v_cmd-conditioned imitation training on top of frozen phc_3.
+# Spec: docs/superpowers/specs/2026-05-01-phc-residual-amp-vcmd-design.md
+
+task: HumanoidImResAMPVCmd
+project_name: "PHC"
+notes: " "
+
+num_envs: 64                          # smoke; server sbatch overrides to 512
+env_spacing: 5
+episode_length: 300                   # 5s @ 60Hz; server uses 600
+is_flag_run: False
+enable_debug_vis: False
+
+# PHC standard
+motion_file: sample_data/amass_walking_3clips_seamless_60s_v9.pkl
+cycle_motion: True
+numAMPObsSteps: 10
+has_self_collision: True
+
+power_scale: 1.0
+controlFrequencyInv: 2               # 30 Hz
+stateInit: "Random"
+
+enableEarlyTermination: True
+terminationDistance: 1.0
+terminationHeight: 0.4               # pelvisHeightMin: min pelvis height for termination
+
+# v_cmd-specific (spec §6)
+v_cmd_min: 0.76
+v_cmd_max: 1.23
+v_cmd_max_accel: 0.5
+v_cmd_ramp_prob: 0.01
+hysteresis: 0.02
+
+# Reward weights (spec §5.4)
+task_reward_w: 0.5
+disc_reward_w: 0.3
+im_reward_w: 0.2
+alpha_track: 5.0
+alpha_im: 2.0
+
+# Action clipping (spec §5.4 "Action clipping")
+delta_action_clip: 0.2
+
+asset:
+  assetFileName: smpl_humanoid.xml
+  assetRoot: phc/data/assets/mjcf
+
+plane:
+  staticFriction: 1.0
+  dynamicFriction: 1.0
+  restitution: 0.0
