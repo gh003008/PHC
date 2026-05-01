@@ -255,3 +255,13 @@ class HumanoidImResAMPVCmd(HumanoidIm):
         # Stash components for logging
         self._r_track = r_track.mean().detach()
         self._r_im = r_im.mean().detach()
+
+    def _compute_reset(self):
+        """Standard PHC fall + tracking-distance termination, plus pelvis<0.4."""
+        super()._compute_reset()
+        # Spec §5.5: pelvis_z < 0.4 also terminates
+        pelvis_z = self._humanoid_root_states[:, 2]
+        fallen = pelvis_z < 0.4
+        if fallen.any():
+            self.reset_buf[fallen] = 1
+            self._terminate_buf[fallen] = 1
