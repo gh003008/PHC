@@ -217,3 +217,41 @@ class HumanoidImResAMPVCmd(HumanoidIm):
         ratio = self._v_cmd_ramped / v_natural_per_env  # (num_envs,)
         self._motion_start_times_offset += self.dt * (ratio - 1.0)
         return super().pre_physics_step(actions)
+
+    # ------------------------------------------------------------------
+    # Reward: r_total = w_track·r_track + w_im·r_im + r_survive
+    # ------------------------------------------------------------------
+
+    def _compute_reward(self, actions):
+        """r_total = w_track·r_track + w_im·r_im + r_survive
+
+        AMP reward (r_amp) is computed by the agent via the AMP discriminator
+        and added downstream by AmpAgent through disc_reward_w. This method
+        sets only the task-side rewards into self.rew_buf.
+        """
+        # v_actual = horizontal root speed (m/s)
+        root_vel_xy = self._humanoid_root_states[:, 7:9]
+        v_act = torch.linalg.norm(root_vel_xy, dim=-1)
+        # Tracking reward — Gaussian kernel
+        v_err = v_act - self._v_cmd_ramped
+        r_track = torch.exp(-self.ALPHA_TRACK * v_err * v_err)
+        # Imitation anchor — distance between current rigid body positions and
+        # reference rigid body positions (PHC's standard ref_body_pos style).
+        # Parent class (HumanoidIm) populates self.ref_body_pos in
+        # _update_task() / _set_env_state() before _compute_reward is called.
+        ref_pos = getattr(self, "ref_body_pos", None)
+        if ref_pos is not None:
+            pose_diff = self._rigid_body_pos - ref_pos     # (num_envs, num_bodies, 3)
+            pose_dist = torch.linalg.norm(pose_diff, dim=-1).mean(dim=-1)  # (num_envs,)
+            r_im = torch.exp(-self.ALPHA_IM * pose_dist)
+        else:
+            r_im = torch.zeros_like(r_track)
+        # Survive reward (1.0 base; killed downstream if env terminates)
+        r_survive = torch.ones_like(r_track)
+        # Combine. Note: r_amp is added by the agent via disc_reward_w, not here.
+        self.rew_buf[:] = (self.W_TRACK * r_track
+                           + self.W_IM * r_im
+                           + r_survive)
+        # Stash components for logging
+        self._r_track = r_track.mean().detach()
+        self._r_im = r_im.mean().detach()
