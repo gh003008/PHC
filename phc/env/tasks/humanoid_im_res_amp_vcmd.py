@@ -66,7 +66,7 @@ class HumanoidImResAMPVCmd(HumanoidIm):
         raise a PyTorch shape-mismatch error.  Instead we call the parent's
         internal sub-methods and write the augmented tensor ourselves.
         """
-        from phc.utils import flags  # local import mirrors parent pattern
+        from phc.utils.flags import flags  # local import mirrors parent pattern
 
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
