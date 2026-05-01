@@ -169,7 +169,48 @@ class HumanoidImResAMPVCmd(HumanoidIm):
             self.ref_motion_cache.clear()
         self._active_clip = new_clip
 
+    # ------------------------------------------------------------------
+    # Reset hook: sample new v_cmd per-env on every reset
+    # ------------------------------------------------------------------
+
+    def _reset_envs(self, env_ids):
+        """Sample new v_cmd target for each env that is resetting.
+
+        Parent hook name confirmed by grepping humanoid_amp.py:378,
+        humanoid.py:585, and humanoid_im.py:956 — all use _reset_envs.
+        """
+        super()._reset_envs(env_ids)
+        if env_ids is None or len(env_ids) == 0:
+            return
+        new_v = torch.empty(len(env_ids), device=self.device).uniform_(
+            self.V_CMD_MIN, self.V_CMD_MAX)
+        self._v_cmd_target[env_ids] = new_v
+        self._v_cmd_ramped[env_ids] = new_v   # start at target (no transient)
+        # Resample active clip based on the new v_cmd
+        ids_list = env_ids.tolist() if hasattr(env_ids, 'tolist') else list(env_ids)
+        for env_id in ids_list:
+            self._active_clip[env_id] = self._select_clip_for_env(env_id)
+
+    # ------------------------------------------------------------------
+    # Per-step ramp: v_cmd_ramped tracks v_cmd_target + random re-samples
+    # ------------------------------------------------------------------
+
+    def _ramp_v_cmd(self):
+        """S2: ramp v_cmd_ramped toward v_cmd_target + 1% chance of new target."""
+        delta_max = self.V_CMD_MAX_ACCEL * self.dt
+        diff = self._v_cmd_target - self._v_cmd_ramped
+        step_size = torch.clamp(diff, -delta_max, delta_max)
+        self._v_cmd_ramped = self._v_cmd_ramped + step_size
+        # Per-step probabilistic re-sample of target (1% per env per step)
+        trigger = (torch.rand(self.num_envs, device=self.device) < self.V_CMD_RAMP_PROB)
+        if trigger.any():
+            n = int(trigger.sum().item())
+            new_targets = torch.empty(n, device=self.device).uniform_(
+                self.V_CMD_MIN, self.V_CMD_MAX)
+            self._v_cmd_target[trigger] = new_targets
+
     def pre_physics_step(self, actions):
+        self._ramp_v_cmd()
         self._apply_clip_switches()
         # Per-step retime: motion advances at v_cmd_ramped/v_natural rate.
         v_natural_per_env = self._v_natural[self._active_clip]
