@@ -107,10 +107,12 @@ Total reward = w_track · exp(-|v_act-v_cmd|²)        (0.5)
 
 4. **Reward** (per-env):
    - `r_track = exp(-α_track · |v_act - v_cmd|²)`. v_act = `||root_vel[:, :2]||`. α_track = 5.0.
-   - `r_amp = log D(s, a)` (AMP discriminator). PHC AMP 코드 재사용.
+   - `r_amp`: PHC `amp_agent.py` 의 기존 LSGAN 형식 사용 — `r_amp = max(0, 1 − 0.25 · (D(s,a) − 1)²)`. 그대로 재사용.
    - `r_im = exp(-α_im · pose_dist(joint_pos, ref_joint_pos))`. α_im = 2.0. anchoring residual 가까이.
    - `r_survive = 1.0` (사망 시 0).
    - `r_total = 0.5 · r_track + 0.3 · r_amp + 0.2 · r_im + r_survive`.
+
+**Action clipping**: `Δa` 는 joint 별 element-wise `clamp(±0.2 rad)` 적용 후 `a_total = a_base + clip(Δa)`. residual 폭주 방지.
 
 5. **Termination** (PHC 표준 + 우리 추가):
    - Fall: pelvis height < 0.4 OR tracking error > 1.0 m.
