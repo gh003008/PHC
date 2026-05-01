@@ -48,3 +48,63 @@ class HumanoidImResAMPVCmd(HumanoidIm):
         """Read clip dirmeta to populate v_natural; called once after super().__init__."""
         # Default to spec § §3 V_NATURAL if dirmeta missing
         self._v_natural = torch.tensor([0.897, 0.975, 1.068], device=self.device)
+
+    # ------------------------------------------------------------------
+    # Observation extension: +1-D v_cmd (normalized to [-1, 1])
+    # ------------------------------------------------------------------
+
+    def get_obs_size(self):
+        # Original PHC obs + 1-D v_cmd (normalized to [-1, 1])
+        return super().get_obs_size() + 1
+
+    def _compute_observations(self, env_ids=None):
+        """Replicate HumanoidIm._compute_observations and append v_cmd.
+
+        We cannot call super()._compute_observations() directly because the
+        parent writes `obs` (shape parent_size) into self.obs_buf whose rows
+        are parent_size+1 (set by our overridden get_obs_size()), which would
+        raise a PyTorch shape-mismatch error.  Instead we call the parent's
+        internal sub-methods and write the augmented tensor ourselves.
+        """
+        from phc.utils import flags  # local import mirrors parent pattern
+
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=self.device)
+
+        self_obs = self._compute_humanoid_obs(env_ids)
+        self.self_obs_buf[env_ids] = self_obs
+
+        if self._enable_task_obs:
+            task_obs = self._compute_task_obs(env_ids)
+            obs = torch.cat([self_obs, task_obs], dim=-1)
+        else:
+            obs = self_obs
+
+        if self.add_obs_noise and not flags.test:
+            obs = obs + torch.randn_like(obs) * 0.1
+
+        # Append normalized v_cmd as the last dimension.
+        v_cmd_col = self._v_cmd_norm()[env_ids].unsqueeze(-1)   # (B, 1)
+        obs_aug = torch.cat([obs, v_cmd_col], dim=-1)           # (B, parent+1)
+
+        # obs_v == 4 uses a history buffer with a different layout; handle it
+        # so we don't silently corrupt that path if someone switches configs.
+        if self.obs_v == 4:
+            B, N = obs_aug.shape
+            sums = self.obs_buf[env_ids, 0:self.past_track_steps].abs().sum(dim=1)
+            zeros = sums == 0
+            nonzero = ~zeros
+            obs_slice = self.obs_buf[env_ids]
+            obs_slice[zeros] = torch.tile(obs_aug[zeros], (1, self.past_track_steps))
+            obs_slice[nonzero] = torch.cat([obs_slice[nonzero, N:], obs_aug[nonzero]], dim=-1)
+            self.obs_buf[env_ids] = obs_slice
+        else:
+            self.obs_buf[env_ids] = obs_aug
+
+        return obs_aug
+
+    def _v_cmd_norm(self) -> torch.Tensor:
+        """Map v_cmd_ramped from [V_CMD_MIN, V_CMD_MAX] to [-1, 1]."""
+        center = (self.V_CMD_MIN + self.V_CMD_MAX) * 0.5
+        half = (self.V_CMD_MAX - self.V_CMD_MIN) * 0.5
+        return (self._v_cmd_ramped - center) / half
