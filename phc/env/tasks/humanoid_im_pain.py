@@ -358,6 +358,35 @@ class HumanoidImPainV1(HumanoidImPain):
                 "{'torque_v13', 'oa_contact_v14', 'oa_contact_v15'}; "
                 f"got {self._knee_proxy_mode!r}"
             )
+        reward_gate_cfg = pc.get("reward_gating", {})
+        self._pain_reward_gating_enabled = bool(reward_gate_cfg.get("enabled", False))
+        self._pain_reward_min_ref_speed = float(reward_gate_cfg.get("min_ref_speed", 0.35))
+        self._pain_reward_transition_width = float(
+            reward_gate_cfg.get("transition_width", 0.20)
+        )
+        self._pain_reward_standing_scale = float(
+            reward_gate_cfg.get("standing_scale", 0.05)
+        )
+
+        contact_reg_cfg = pc.get("contact_regularizer", {})
+        self._pain_contact_reg_enabled = bool(contact_reg_cfg.get("enabled", False))
+        self._pain_contact_reg_side = str(contact_reg_cfg.get("side", "right"))
+        if self._pain_contact_reg_side not in ("left", "right"):
+            raise ValueError(
+                "env.pain.contact_regularizer.side must be one of {'left', 'right'}; "
+                f"got {self._pain_contact_reg_side!r}"
+            )
+        self._pain_contact_reg_weight = float(contact_reg_cfg.get("weight", 0.0))
+        self._pain_contact_reg_min_force = float(contact_reg_cfg.get("min_force", 120.0))
+        self._pain_contact_reg_ref_stance_height = float(
+            contact_reg_cfg.get("ref_stance_height", 0.08)
+        )
+        self._pain_contact_reg_ref_stance_speed = float(
+            contact_reg_cfg.get("ref_stance_speed", 0.35)
+        )
+        self._pain_contact_reg_max_penalty = float(
+            contact_reg_cfg.get("max_penalty", 1.0)
+        )
 
         super().__init__(cfg, sim_params, physics_engine, device_type, device_id, headless)
 
@@ -395,6 +424,9 @@ class HumanoidImPainV1(HumanoidImPain):
             "left": torch.zeros((self.num_envs,), device=self.device),
             "right": torch.zeros((self.num_envs,), device=self.device),
         }
+        self._last_pain_reward_gate = torch.ones((self.num_envs,), device=self.device)
+        self._last_ref_right_stance_gate = torch.zeros((self.num_envs,), device=self.device)
+        self._last_right_contact_force = torch.zeros((self.num_envs,), device=self.device)
 
     def get_obs_size(self):
         return super().get_obs_size() + getattr(self, "_pain_obs_dim", 0)
@@ -511,6 +543,61 @@ class HumanoidImPainV1(HumanoidImPain):
             w_kam=self._knee_w_kam,
             w_kfm=self._knee_w_kfm,
         )
+
+    def _compute_current_foot_force_mag(self, side):
+        ids = self._knee_load_body_idx[side]
+        foot_force = (
+            self._contact_forces[:, ids["ankle"], :]
+            + self._contact_forces[:, ids["toe"], :]
+        )
+        return torch.norm(foot_force, dim=-1)
+
+    def _compute_reference_gait_phase(self):
+        time = (
+            self.progress_buf * self.dt
+            + self._motion_start_times
+            + self._motion_start_times_offset
+        )
+        motion_res = self._get_state_from_motionlib_cache(
+            self._sampled_motion_ids, time, self._global_offset
+        )
+        ref_root_vel = motion_res["root_vel"]
+        ref_body_pos = motion_res["rg_pos"]
+        ref_body_vel = motion_res["body_vel"]
+
+        ref_speed = torch.norm(ref_root_vel[:, :2], dim=-1)
+        if self._pain_reward_gating_enabled:
+            width = max(self._pain_reward_transition_width, 1.0e-6)
+            walk_gate = torch.clamp(
+                (ref_speed - self._pain_reward_min_ref_speed) / width,
+                0.0,
+                1.0,
+            )
+            pain_gate = self._pain_reward_standing_scale + (
+                1.0 - self._pain_reward_standing_scale
+            ) * walk_gate
+        else:
+            walk_gate = torch.ones_like(ref_speed)
+            pain_gate = torch.ones_like(ref_speed)
+
+        side = self._pain_contact_reg_side
+        ids = self._knee_load_body_idx[side]
+        ankle_pos = ref_body_pos[:, ids["ankle"], :]
+        toe_pos = ref_body_pos[:, ids["toe"], :]
+        ankle_vel = ref_body_vel[:, ids["ankle"], :]
+        toe_vel = ref_body_vel[:, ids["toe"], :]
+        foot_height = torch.minimum(ankle_pos[:, 2], toe_pos[:, 2])
+        foot_speed = torch.minimum(
+            torch.norm(ankle_vel[:, :2], dim=-1),
+            torch.norm(toe_vel[:, :2], dim=-1),
+        )
+        stance_gate = (
+            (foot_height < self._pain_contact_reg_ref_stance_height)
+            & (foot_speed < self._pain_contact_reg_ref_stance_speed)
+        ).float()
+        stance_gate = stance_gate * walk_gate
+
+        return pain_gate, stance_gate, ref_speed, foot_height, foot_speed
 
     def _compute_knee_proxy(self, side):
         idx = self._knee_dof_idx[side]
@@ -632,10 +719,46 @@ class HumanoidImPainV1(HumanoidImPain):
                 affected_pain = self.pain_body_state[:, idx]
             else:
                 affected_pain = torch.zeros((self.num_envs,), device=self.device)
-            self.rew_buf[:] = self.rew_buf[:] - self._p_lambda * affected_pain
-            self.extras["pain_v1_reward_cost_mean"] = float(
-                (self._p_lambda * affected_pain).mean().item()
+            pain_gate, stance_gate, ref_speed, foot_height, foot_speed = (
+                self._compute_reference_gait_phase()
             )
+            gated_pain_cost = self._p_lambda * affected_pain * pain_gate
+            self.rew_buf[:] = self.rew_buf[:] - gated_pain_cost
+            self.extras["pain_v1_reward_cost_mean"] = float(
+                gated_pain_cost.mean().item()
+            )
+            self.extras["pain_v1_reward_gate_mean"] = float(pain_gate.mean().item())
+            self.extras["pain_v1_ref_speed_mean"] = float(ref_speed.mean().item())
+
+            if self._pain_contact_reg_enabled and self._pain_contact_reg_weight > 0:
+                force_mag = self._compute_current_foot_force_mag(
+                    self._pain_contact_reg_side
+                )
+                min_force = max(self._pain_contact_reg_min_force, 1.0e-6)
+                contact_deficit = torch.relu(min_force - force_mag) / min_force
+                contact_penalty = (
+                    self._pain_contact_reg_weight
+                    * stance_gate
+                    * torch.clamp(contact_deficit, 0.0, self._pain_contact_reg_max_penalty)
+                )
+                self.rew_buf[:] = self.rew_buf[:] - contact_penalty
+                self._last_right_contact_force[:] = force_mag
+                self._last_ref_right_stance_gate[:] = stance_gate
+                self.extras["pain_v1_contact_reg_penalty_mean"] = float(
+                    contact_penalty.mean().item()
+                )
+                self.extras["pain_v1_contact_reg_stance_frac"] = float(
+                    stance_gate.mean().item()
+                )
+                self.extras["pain_v1_contact_reg_force_mean"] = float(
+                    force_mag.mean().item()
+                )
+                self.extras["pain_v1_contact_reg_ref_foot_height"] = float(
+                    foot_height.mean().item()
+                )
+                self.extras["pain_v1_contact_reg_ref_foot_speed"] = float(
+                    foot_speed.mean().item()
+                )
 
     def _compute_observations(self, env_ids=None):
         if env_ids is None:

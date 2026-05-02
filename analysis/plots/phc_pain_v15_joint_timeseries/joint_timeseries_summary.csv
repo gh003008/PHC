@@ -1,0 +1,7 @@
+joint,pretrained_mean_deg,latest_mean_deg,rmse_diff_deg
+left_hip,-1.780988,-1.122479,2.828176
+right_hip,1.456016,0.650304,4.031469
+left_knee,16.462673,13.347453,4.807066
+right_knee,13.168796,13.301141,5.837972
+left_ankle,-6.525304,-4.373809,3.858810
+right_ankle,-5.339574,-5.399387,3.957165

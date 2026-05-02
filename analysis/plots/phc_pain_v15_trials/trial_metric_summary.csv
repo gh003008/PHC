@@ -1,0 +1,42 @@
+exp_name,metric,n,last_step,first100,tail100,last,interpretation
+phc_shape_pnn_iccv_pain_v15_oa_sanity_idx3,rewards_mean,5082,68883,60.7678008,65.7677948,65.2834091,stable reward despite weak pain term
+phc_shape_pnn_iccv_pain_v15_oa_sanity_idx3,episode_length,5082,68883,90.120798,91.8590947,91.9959335,stable gait rollout
+phc_shape_pnn_iccv_pain_v15_oa_sanity_idx3,pain_reward_cost,5082,68883,0.0518262198,0.037424014,0.0358789265,weak pain cost decreased
+phc_shape_pnn_iccv_pain_v15_oa_sanity_idx3,right_knee_load,5083,68884,0.337850055,0.289899752,0.296659678,OA load proxy decreased without visible gait change
+phc_shape_pnn_iccv_pain_v15_oa_sanity_idx3,right_knee_moment_load,5083,68884,0.319613899,0.229158499,0.235566452,moment proxy decreased
+phc_shape_pnn_iccv_pain_v15_oa_sanity_idx3,right_knee_kam,5083,68884,0.319203681,0.22648112,0.234149173,KAM proxy decreased
+phc_shape_pnn_iccv_pain_v15_oa_sanity_idx3,right_knee_kfm,5083,68884,0.32057108,0.235405716,0.238873407,KFM proxy decreased
+phc_shape_pnn_iccv_pain_v15_oa_sanity_idx3,right_knee_tau_rms,5083,68884,16.1985136,15.1469477,14.3102322,tau RMS decreased
+phc_shape_pnn_iccv_pain_v15_oa_aggressive_idx3,rewards_mean,2415,66165,-183.158473,21.063189,21.9662857,recovered from severe initial penalty but learned cheat
+phc_shape_pnn_iccv_pain_v15_oa_aggressive_idx3,episode_length,2415,66165,90.8672864,63.0908329,65.8739548,rollout quality degraded
+phc_shape_pnn_iccv_pain_v15_oa_aggressive_idx3,pain_reward_cost,2415,66165,2.73977163,0.0924082766,0.0933499113,pain state strongly reduced
+phc_shape_pnn_iccv_pain_v15_oa_aggressive_idx3,right_knee_load,2415,66165,0.333679586,0.00324223758,0.0024160801,knee load nearly eliminated by non-contact
+phc_shape_pnn_iccv_pain_v15_oa_aggressive_idx3,right_knee_moment_load,2415,66165,0.326455883,0.00302504547,0.00218825182,moment proxy nearly eliminated by non-contact
+phc_shape_pnn_iccv_pain_v15_oa_aggressive_idx3,right_knee_kam,2415,66165,0.326225458,0.00299549996,0.00215501781,KAM proxy nearly eliminated by non-contact
+phc_shape_pnn_iccv_pain_v15_oa_aggressive_idx3,right_knee_kfm,2415,66165,0.327377561,0.00314322724,0.00232118717,KFM proxy nearly eliminated by non-contact
+phc_shape_pnn_iccv_pain_v15_oa_aggressive_idx3,right_knee_tau_rms,2415,66165,15.3564416,18.7761701,18.6947861,tau RMS increased despite load cheat
+phc_shape_pnn_iccv_pain_v15_oa_middle_idx3,rewards_mean,2975,66725,9.4928056,24.5322982,23.3429127,moderate reward recovery
+phc_shape_pnn_iccv_pain_v15_oa_middle_idx3,episode_length,2975,66725,90.2278482,90.9339441,84.2059097,mostly stable but weaker final rollout
+phc_shape_pnn_iccv_pain_v15_oa_middle_idx3,pain_reward_cost,2975,66725,0.619258901,0.405012558,0.414901137,pain cost decreased
+phc_shape_pnn_iccv_pain_v15_oa_middle_idx3,right_knee_load,2976,66726,0.33021017,0.138444521,0.144677103,knee load decreased but visual change weak
+phc_shape_pnn_iccv_pain_v15_oa_middle_idx3,right_knee_moment_load,2975,66725,0.315039165,0.117677719,0.124943331,moment proxy decreased
+phc_shape_pnn_iccv_pain_v15_oa_middle_idx3,right_knee_kam,2975,66725,0.315108008,0.116283543,0.123766974,KAM proxy decreased
+phc_shape_pnn_iccv_pain_v15_oa_middle_idx3,right_knee_kfm,2975,66725,0.314832634,0.121860246,0.128472388,KFM proxy decreased
+phc_shape_pnn_iccv_pain_v15_oa_middle_idx3,right_knee_tau_rms,2975,66725,16.0056924,16.5188774,16.5356178,tau RMS increased
+phc_shape_pnn_iccv_pain_v15_oa_walkgate_idx3,rewards_mean,915,67615,37.6020247,41.71228,43.3494911,reward improved with contact floor
+phc_shape_pnn_iccv_pain_v15_oa_walkgate_idx3,episode_length,915,67615,90.0076578,91.0682188,94.5185242,stable rollout
+phc_shape_pnn_iccv_pain_v15_oa_walkgate_idx3,pain_reward_cost,916,67616,0.234814032,0.250804782,0.269604981,pain cost increased as contact returned
+phc_shape_pnn_iccv_pain_v15_oa_walkgate_idx3,contact_reg_force,916,67616,169.68314,247.878043,262.794708,right contact strongly recovered
+phc_shape_pnn_iccv_pain_v15_oa_walkgate_idx3,right_knee_load,916,67616,0.146385806,0.20235965,0.213750079,knee load increased with strong contact floor
+phc_shape_pnn_iccv_pain_v15_oa_walkgate_idx3,right_knee_moment_load,916,67616,0.125430485,0.162421219,0.170836836,moment proxy increased
+phc_shape_pnn_iccv_pain_v15_oa_walkgate_idx3,right_knee_kam,916,67616,0.124558099,0.160992061,0.168440789,KAM proxy increased
+phc_shape_pnn_iccv_pain_v15_oa_walkgate_idx3,right_knee_kfm,916,67616,0.128047649,0.166708696,0.178025007,KFM proxy increased
+phc_shape_pnn_iccv_pain_v15_oa_momentbias_idx3,rewards_mean,988,68588,18.857158,20.1637865,21.6659069,reward slowly improving under stronger pain
+phc_shape_pnn_iccv_pain_v15_oa_momentbias_idx3,episode_length,988,68588,89.7223722,91.0892658,89.2394638,stable enough for viewer inspection
+phc_shape_pnn_iccv_pain_v15_oa_momentbias_idx3,pain_reward_cost,989,68589,0.50658273,0.482250807,0.495445818,pain cost slightly decreased and then plateaued
+phc_shape_pnn_iccv_pain_v15_oa_momentbias_idx3,contact_reg_force,989,68589,248.891696,248.742905,252.891266,right contact maintained without hard normal-loading floor
+phc_shape_pnn_iccv_pain_v15_oa_momentbias_idx3,right_knee_load,989,68589,0.318030372,0.301335358,0.306751043,knee load decreased modestly
+phc_shape_pnn_iccv_pain_v15_oa_momentbias_idx3,right_knee_moment_load,989,68589,0.334400315,0.313692194,0.319412857,moment proxy decreased
+phc_shape_pnn_iccv_pain_v15_oa_momentbias_idx3,right_knee_kam,989,68589,0.166003104,0.154861218,0.158446014,KAM proxy decreased
+phc_shape_pnn_iccv_pain_v15_oa_momentbias_idx3,right_knee_kfm,989,68589,0.168995725,0.159823403,0.161597043,KFM proxy decreased
+phc_shape_pnn_iccv_pain_v15_oa_momentbias_idx3,right_knee_tau_rms,989,68589,16.8419973,16.7167624,16.4891815,tau RMS slightly decreased

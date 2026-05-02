@@ -34,6 +34,8 @@ MANIFEST
 
 .vscode/*
 .vscode/settings.json
+.codex
+analysis/plots/phc_pain_v15_trials/videos/tmp_recordings/
 
 
 
