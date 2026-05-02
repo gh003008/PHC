@@ -210,4 +210,10 @@ class HumanoidImResAMPVCmdV2(HumanoidIm):
         # in pinned mode we want exactly one clip throughout.
         if _DIAG_PIN_VCMD_VAL is None:
             self._apply_clip_switches()
+        # Gate 4: per-step retime. Motion advances at v_cmd_ramped/v_natural
+        # rate. ratio > 1 → faster playback; ratio < 1 → slower.
+        # This lets phc_3 track v_cmd values *between* the natural clip speeds.
+        v_natural_per_env = self._v_natural[self._active_clip]
+        ratio = self._v_cmd_ramped / v_natural_per_env
+        self._motion_start_times_offset += self.dt * (ratio - 1.0)
         return super().pre_physics_step(actions)
