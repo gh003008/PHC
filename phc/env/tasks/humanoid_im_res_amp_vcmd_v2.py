@@ -217,3 +217,39 @@ class HumanoidImResAMPVCmdV2(HumanoidIm):
         ratio = self._v_cmd_ramped / v_natural_per_env
         self._motion_start_times_offset += self.dt * (ratio - 1.0)
         return super().pre_physics_step(actions)
+
+    # ------------------------------------------------------------------
+    # Reward (Gate 5):
+    #   r_total = W_TRACK·r_track + W_IM·r_im   (no r_survive — Goodharting fix)
+    #   r_track: Gaussian on |v_actual - v_cmd|
+    #   r_im   : Gaussian on mean rigid-body distance to reference (anchor)
+    #   r_amp added downstream by AmpAgent via disc_reward_w
+    # ------------------------------------------------------------------
+
+    W_TRACK = 0.5
+    W_IM = 0.2
+    ALPHA_TRACK = 5.0
+    ALPHA_IM = 2.0
+
+    def _compute_reward(self, actions):
+        root_vel_xy = self._humanoid_root_states[:, 7:9]
+        v_act = torch.linalg.norm(root_vel_xy, dim=-1)
+        v_err = v_act - self._v_cmd_ramped
+        r_track = torch.exp(-self.ALPHA_TRACK * v_err * v_err)
+
+        ref_pos = getattr(self, "ref_body_pos", None)
+        if ref_pos is not None:
+            pose_diff = self._rigid_body_pos - ref_pos
+            pose_dist = torch.linalg.norm(pose_diff, dim=-1).mean(dim=-1)
+            r_im = torch.exp(-self.ALPHA_IM * pose_dist)
+        else:
+            r_im = torch.zeros_like(r_track)
+
+        # No r_survive — see 02_research_dev/260502 failure analysis §3.1.
+        # r_amp is added by AmpAgent's disc_reward_w outside this function.
+        self.rew_buf[:] = self.W_TRACK * r_track + self.W_IM * r_im
+
+        if hasattr(self, "reward_raw"):
+            self.reward_raw[:] = 0.0
+            self.reward_raw[:, 0] = r_track
+            self.reward_raw[:, 1] = r_im

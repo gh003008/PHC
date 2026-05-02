@@ -53,6 +53,13 @@ class ResMLPHead(nn.Module):
             nn.SiLU(),
             nn.Linear(hidden[1], action_dim),
         )
+        # Zero-init the final linear so delta_mu = 0 at init. This makes the
+        # initial policy = phc_3 + 0 = phc_3 exactly, ensuring training
+        # starts from a known-walking baseline. Without this, the random
+        # final-layer init (kaiming_uniform) produces large delta_mu values
+        # that destabilize phc_3 → 25-step fall (Gate 6 verification).
+        nn.init.zeros_(self.mu[-1].weight)
+        nn.init.zeros_(self.mu[-1].bias)
         # log_sigma is a (non-learnable by default) parameter so it survives
         # state_dict round-trips and lives on the right device automatically.
         self.log_sigma = nn.Parameter(torch.full((action_dim,), float(sigma_init)),
