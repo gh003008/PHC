@@ -128,6 +128,20 @@ class ResAMPVCmdNetwork(AMPPNNBuilder.Network):
         frozen = load_frozen_phc_3(ckpt_path, device="cpu")
         for p in frozen.parameters():
             p.requires_grad = False
+
+        # Stash phc_3's running_mean_std so the agent/player can apply it to
+        # the outer model at restore time. Without this, V2 inference uses
+        # random RunningMeanStd → phc_3 sees wrongly-normalized obs → falls.
+        # Extension by +1 dim (zero mean, unit var) for v_cmd is done by
+        # whoever applies it (apply_phc3_rms helper below).
+        try:
+            frozen_ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        except TypeError:
+            frozen_ckpt = torch.load(ckpt_path, map_location="cpu")
+        if isinstance(frozen_ckpt, dict) and "running_mean_std" in frozen_ckpt:
+            self._frozen_rms_state = frozen_ckpt["running_mean_std"]
+        else:
+            self._frozen_rms_state = None
         # Discard the freshly-initialized self.pnn (built by AMPPNNBuilder.Network)
         # and substitute the frozen one. We keep the attribute name `pnn`
         # so any downstream PHC code that references `network.pnn` still works.

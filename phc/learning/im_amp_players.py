@@ -26,6 +26,41 @@ class IMAMPPlayerContinuous(amp_players.AMPPlayerContinuous):
     def __init__(self, config):
         super().__init__(config)
 
+        # If the network was built with a frozen phc_3 base (V2 path) AND no
+        # top-level ckpt was loaded (PHC_LOAD_FROZEN_RMS path / fresh V2 init),
+        # apply phc_3's running_mean_std to self.running_mean_std so phc_3 sees
+        # correctly-normalized obs. Without this, V2 inference uses default-init
+        # RMS → phc_3 receives garbage-normalized obs → falls.
+        # The frozen RMS is stashed by ResAMPVCmdNetwork.__init__.
+        net = getattr(self.model, "a2c_network", None)
+        frozen_rms = getattr(net, "_frozen_rms_state", None) if net is not None else None
+        if (frozen_rms is not None and self._normalize_input
+                and getattr(self, "running_mean_std", None) is not None):
+            try:
+                # phc_3's RMS is 934-D (no v_cmd). V2 obs is 935-D (with v_cmd).
+                # Extend by 1 with mean=0, var=1 since v_cmd is already
+                # normalized to [-1, 1] in the env.
+                phc3_mean = frozen_rms["running_mean"]
+                phc3_var = frozen_rms["running_var"]
+                cur_dim = self.running_mean_std.running_mean.shape[0]
+                if phc3_mean.shape[0] == cur_dim:
+                    target_mean = phc3_mean
+                    target_var = phc3_var
+                elif phc3_mean.shape[0] == cur_dim - 1:
+                    pad_mean = torch.zeros(1, dtype=phc3_mean.dtype, device=phc3_mean.device)
+                    pad_var = torch.ones(1, dtype=phc3_var.dtype, device=phc3_var.device)
+                    target_mean = torch.cat([phc3_mean, pad_mean])
+                    target_var = torch.cat([phc3_var, pad_var])
+                else:
+                    target_mean = None
+                if target_mean is not None:
+                    self.running_mean_std.running_mean.data.copy_(target_mean.to(self.running_mean_std.running_mean.device))
+                    self.running_mean_std.running_var.data.copy_(target_var.to(self.running_mean_std.running_var.device))
+                    self.running_mean_std.count.data.copy_(frozen_rms["count"].to(self.running_mean_std.count.device))
+                    print(f"[V2] applied phc_3 RunningMeanStd ({target_mean.shape[0]}-D) to player.running_mean_std")
+            except Exception as _e:
+                print(f"[V2] failed to apply phc_3 RMS: {_e}")
+
         self.terminate_state = torch.zeros(self.env.task.num_envs, device=self.device)
         self.terminate_memory = []
 

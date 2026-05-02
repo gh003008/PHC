@@ -148,6 +148,19 @@ v2는 7 단계 gate, 각 단계에 진단 (PHC_ZERO_RESIDUAL=1 + 모든 dynamics
 
 학습 시작 후 1000 epoch마다 자동 진단 실행. 통과 못하면 즉시 alert.
 
+### 5.7 Gate 2 통과 (2026-05-02 야간)
+
+V2 task에 v_cmd 1-D obs 추가 + 새 learning yaml + 인프라 (phc_3 RMS 자동 적용 + ckpt 미존재 우아 처리).
+
+**결과**: PHC_ZERO_RESIDUAL=1 + V2 architecture (frozen phc_3 + zero residual + v_cmd 935-D obs) → **eps_len 1799 step (full motion), avg reward 1666.97**. Gate 1 (1695.85) 대비 ~30 차이는 v_cmd obs가 critic에 미세하게 영향, **phc_3 동작은 유지** (last dim drop 검증).
+
+**추가된 인프라:**
+1. `res_amp_network.py`: phc_3 ckpt에서 running_mean_std 추출 후 `_frozen_rms_state`로 stash
+2. `im_amp_players.py`: player init 시 `_frozen_rms_state` 발견 → 935-D으로 확장 후 model.running_mean_std에 적용 (`PHC_LOAD_FROZEN_RMS` 자동)
+3. `amp_players.py`: restore("Base"/missing file) 우아 처리 — V2 첫 학습 시 ckpt 없이도 부팅 가능
+
+이로써 **각 gate 검증이 stub ckpt 없이 가능**. v2 학습 시작은 phc_3 RMS로 시작하고 PPO 진행하면서 자연스럽게 적응.
+
 ### 5.6 Gate 1 통과 (2026-05-02 늦은 저녁)
 
 **결과**: V2 task class (empty subclass HumanoidIm) + 새 env yaml (env_im_pnn 파라미터 미러 + full robot config) → phc_3 alone이 **eps_len 1799 step (= 60s 모션 clip 전체)** 까지 walking, avg reward 1695.85.

@@ -62,6 +62,15 @@ class AMPPlayerContinuous(common_player.CommonPlayer):
     #         return current_action
 
     def restore(self, fn):
+        # rl_games passes the literal sentinel "Base" when no checkpoint was
+        # selected (e.g. --epoch -1 with no top-level ckpt found). Skip
+        # restoration in that case — V2 path relies on
+        # ResAMPVCmdNetwork.__init__ loading frozen_base + IMAMPPlayer applying
+        # phc_3 RunningMeanStd from network._frozen_rms_state.
+        import os as _os
+        if fn is None or fn == "" or fn == "Base" or not _os.path.exists(fn):
+            print(f"[AMPPlayer.restore] skipping ckpt load (fn={fn!r}); using fresh-init + frozen_base")
+            return
         super().restore(fn)
         if self._normalize_amp_input:
             checkpoint = torch_ext.load_checkpoint(fn)
@@ -212,6 +221,15 @@ class AMPPlayerDiscrete(common_player.CommonPlayerDiscrete):
     #         return current_action
 
     def restore(self, fn):
+        # rl_games passes the literal sentinel "Base" when no checkpoint was
+        # selected (e.g. --epoch -1 with no top-level ckpt found). Skip
+        # restoration in that case — V2 path relies on
+        # ResAMPVCmdNetwork.__init__ loading frozen_base + IMAMPPlayer applying
+        # phc_3 RunningMeanStd from network._frozen_rms_state.
+        import os as _os
+        if fn is None or fn == "" or fn == "Base" or not _os.path.exists(fn):
+            print(f"[AMPPlayer.restore] skipping ckpt load (fn={fn!r}); using fresh-init + frozen_base")
+            return
         super().restore(fn)
         if self._normalize_amp_input:
             checkpoint = torch_ext.load_checkpoint(fn)
