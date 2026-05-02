@@ -34,7 +34,7 @@ class IMAMPPlayerContinuous(amp_players.AMPPlayerContinuous):
         # The frozen RMS is stashed by ResAMPVCmdNetwork.__init__.
         net = getattr(self.model, "a2c_network", None)
         frozen_rms = getattr(net, "_frozen_rms_state", None) if net is not None else None
-        if (frozen_rms is not None and self._normalize_input
+        if (frozen_rms is not None and getattr(self, "normalize_input", False)
                 and getattr(self, "running_mean_std", None) is not None):
             try:
                 # phc_3's RMS is 934-D (no v_cmd). V2 obs is 935-D (with v_cmd).

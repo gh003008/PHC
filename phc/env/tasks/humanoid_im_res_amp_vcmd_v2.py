@@ -197,13 +197,23 @@ class HumanoidImResAMPVCmdV2(HumanoidIm):
         self._v_cmd_ramped[env_ids] = new_v
         # Select active clip for each reset env based on its new v_cmd, then
         # force motion_lib's sample to that clip and re-align root offset.
-        ids_list = env_ids.tolist() if hasattr(env_ids, 'tolist') else list(env_ids)
-        for env_id in ids_list:
-            self._active_clip[env_id] = self._select_clip_for_env(env_id)
-        # Force the right clip on these envs (parent _reset_envs already sampled
-        # randomly; override with our v_cmd-selected clip).
+        # Note: at reset, the PARENT already did state init (Random/RefInit) on
+        # whatever clip motion_lib picked. Forcing _sampled_motion_ids to a
+        # different clip here would mismatch state↔reference — humanoid pose is
+        # from clip X but reference becomes clip Y → first-step tracking fails.
+        # Instead, READ the parent's picked clip and align v_cmd to it.
         env_ids_t = env_ids if isinstance(env_ids, torch.Tensor) else torch.tensor(env_ids, device=self.device)
-        self._sampled_motion_ids[env_ids_t] = self._active_clip[env_ids_t]
+        self._active_clip[env_ids_t] = self._sampled_motion_ids[env_ids_t].clamp(0, 2)
+        # During training (no PHC_PIN_VCMD), align v_cmd to the natural speed of
+        # the parent-chosen clip (with some jitter), so state↔reference↔v_cmd
+        # all agree. This still spans the full [V_CMD_MIN, V_CMD_MAX] range
+        # because all 3 clips' natural speeds + jitter cover it.
+        if _DIAG_PIN_VCMD_VAL is None:
+            v_natural_per_env = self._v_natural[self._active_clip[env_ids_t]]
+            jitter = torch.empty(len(env_ids), device=self.device).uniform_(-0.05, 0.05)
+            new_v = (v_natural_per_env + jitter).clamp(V_CMD_MIN, V_CMD_MAX)
+            self._v_cmd_target[env_ids_t] = new_v
+            self._v_cmd_ramped[env_ids_t] = new_v
 
     def pre_physics_step(self, actions):
         # Mid-episode clip switching (with hysteresis). Skipped if pinned —
