@@ -42,6 +42,7 @@ from phc.env.tasks.humanoid_im_vic_cmd import HumanoidImVICCmd
 from phc.env.tasks.humanoid_im_vic_cmd_retime import HumanoidImVICCmdRetime
 from phc.env.tasks.humanoid_im_vic_cmd_multiclip import HumanoidImVICCmdMultiClip
 from phc.env.tasks.humanoid_im_res_amp_vcmd import HumanoidImResAMPVCmd
+from phc.env.tasks.humanoid_im_res_amp_vcmd_v2 import HumanoidImResAMPVCmdV2
 from phc.env.tasks.humanoid_im_mpl import HumanoidImMPL
 
 

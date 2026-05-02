@@ -329,6 +329,14 @@ class IMAMPPlayerContinuous(amp_players.AMPPlayerContinuous):
                     done_count = len(done_indices)
                     games_played += done_count
 
+                    # DIAG: force print on every done event regardless of print_stats.
+                    # Enable via env var PHC_DIAG_DONE_PRINT=1 — useful for V2 gate verification
+                    # where print_stats may be False but we want to confirm walking eps_len.
+                    if done_count > 0 and os.environ.get("PHC_DIAG_DONE_PRINT", "0") == "1":
+                        cur_r = cr[done_indices].sum().item() / done_count
+                        cur_s = steps[done_indices].sum().item() / done_count
+                        print(f"[DIAG] done_count={done_count} avg_reward={cur_r:.2f} avg_steps={cur_s:.0f}", flush=True)
+
                     if done_count > 0:
                         if self.is_rnn:
                             for s in self.states:

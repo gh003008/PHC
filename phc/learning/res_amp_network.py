@@ -20,11 +20,17 @@ in PHC's flat obs, and we additionally append v_cmd so the head sees velocity
 context). This keeps the seam between Tasks 11 and 13 minimal.
 """
 from __future__ import annotations
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from phc.learning.amp_network_pnn_builder import AMPPNNBuilder
+
+# Diagnostic hook: env var to force residual_head output to zero, returning
+# only the frozen phc_3 base action. Used to test obs/wiring health
+# (does phc_3 walk in our env when residual is removed?).
+_DIAG_ZERO_RESIDUAL = os.environ.get("PHC_ZERO_RESIDUAL", "0") == "1"
 
 
 class ResMLPHead(nn.Module):
@@ -164,8 +170,13 @@ class ResAMPVCmdNetwork(AMPPNNBuilder.Network):
             a_base, _ = self.pnn(base_in, idx=self.training_prim)
 
         # Residual head sees the full obs (proprio + v_cmd)
-        delta_mu, delta_logstd = self.residual_head(obs)
-        delta_mu = torch.clamp(delta_mu, -self.delta_clip, self.delta_clip)
+        if _DIAG_ZERO_RESIDUAL:
+            # Diagnostic: zero residual contribution → phc_3 alone
+            delta_mu = torch.zeros_like(a_base)
+            delta_logstd = torch.full_like(a_base, -5.0)
+        else:
+            delta_mu, delta_logstd = self.residual_head(obs)
+            delta_mu = torch.clamp(delta_mu, -self.delta_clip, self.delta_clip)
 
         mu = a_base + delta_mu
 

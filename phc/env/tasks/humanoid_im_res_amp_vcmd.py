@@ -3,10 +3,19 @@
 Spec: docs/superpowers/specs/2026-05-01-phc-residual-amp-vcmd-design.md
 """
 from __future__ import annotations
+import os
 import isaacgym  # noqa: F401  # must precede torch
 import torch
 import numpy as np
 from phc.env.tasks.humanoid_im import HumanoidIm
+
+# Diagnostic hooks. Set to "1" via env var to isolate suspected breakages.
+#   PHC_DISABLE_DYNAMICS:       skip ramp/clip-switch/retime in pre_physics_step
+#   PHC_DISABLE_PELVIS_TERM:    skip pelvis_z<0.4 termination addition
+#   PHC_FIX_VCMD_NEUTRAL:       force v_cmd_ramped to V_NATURAL[1] each step
+_DIAG_DISABLE_DYNAMICS = os.environ.get("PHC_DISABLE_DYNAMICS", "0") == "1"
+_DIAG_DISABLE_PELVIS_TERM = os.environ.get("PHC_DISABLE_PELVIS_TERM", "0") == "1"
+_DIAG_FIX_VCMD_NEUTRAL = os.environ.get("PHC_FIX_VCMD_NEUTRAL", "0") == "1"
 
 
 class HumanoidImResAMPVCmd(HumanoidIm):
@@ -210,6 +219,10 @@ class HumanoidImResAMPVCmd(HumanoidIm):
             self._v_cmd_target[trigger] = new_targets
 
     def pre_physics_step(self, actions):
+        if _DIAG_DISABLE_DYNAMICS:
+            if _DIAG_FIX_VCMD_NEUTRAL:
+                self._v_cmd_ramped[:] = float(self._v_natural[1].item())
+            return super().pre_physics_step(actions)
         self._ramp_v_cmd()
         self._apply_clip_switches()
         # Per-step retime: motion advances at v_cmd_ramped/v_natural rate.
@@ -267,6 +280,8 @@ class HumanoidImResAMPVCmd(HumanoidIm):
     def _compute_reset(self):
         """Standard PHC fall + tracking-distance termination, plus pelvis<0.4."""
         super()._compute_reset()
+        if _DIAG_DISABLE_PELVIS_TERM:
+            return
         # Spec §5.5: pelvis_z < 0.4 also terminates
         pelvis_z = self._humanoid_root_states[:, 2]
         fallen = pelvis_z < 0.4

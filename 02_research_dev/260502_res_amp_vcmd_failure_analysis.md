@@ -115,6 +115,71 @@ r_total = 0.5 * r_track + 0.3 * r_amp + 0.2 * r_im
         # r_survive 제거됨
 ```
 
+### 5.4 추가 진단 (2026-05-02 저녁): phc_3 alone도 우리 env에서 fall
+
+v2 시작 전 5분 진단으로 isolation 확인:
+- 진단 hook (env-var 가드): `PHC_ZERO_RESIDUAL=1`, `PHC_DISABLE_DYNAMICS=1`, `PHC_DISABLE_PELVIS_TERM=1`, `PHC_FIX_VCMD_NEUTRAL=1`
+- 코드: `phc/learning/res_amp_network.py:eval_actor`, `phc/env/tasks/humanoid_im_res_amp_vcmd.py:pre_physics_step` & `_compute_reset`
+- 결과: residual=0 + multi-clip off + retime off + pelvis term off + v_cmd 중립 → **여전히 24-25 step 안에 fall, reward 34-35 cap**
+
+추가로 env yaml의 `terminationHeight: 0.4 → 0.15`, `cycle_motion: True → False`, `has_pnn: False → True`, `num_prim: 1 → 3`, `zero_out_far: True → False` 모두 env_im_pnn (phc_3 학습) 매칭으로 변경 → **여전히 24-25 step**.
+
+같은 phc_3 ckpt가 `phc_walk_demo.py` (HumanoidIm + Hydra path)에서 잘 걷는데, 우리 task class에서 fall.
+
+→ **결정적: env yaml 파라미터만으로는 안 풀림. 가장 큰 의심은 RunningMeanStd shift** — `output/ResAMPVCmd.pth` 로드 시 trained running stats가 phc_3 학습 stats와 달라서 phc_3가 wrong-normalized obs 받음.
+
+진단 hook 인프라는 v2 검증에도 그대로 재사용 (각 gate 통과 확인용).
+
+### 5.5 v2 빌드 순서: 진단 gate 단계별 추가
+
+v1 실패 핵심 이유 = 모든 변경을 한 번에 빌드 → 5500 epoch 후 fall 발견 → 어느 변경이 원인인지 모름.
+
+v2는 7 단계 gate, 각 단계에 진단 (PHC_ZERO_RESIDUAL=1 + 모든 dynamics off → eps_len ≥ 500 walking) 통과 후에만 다음으로 commit:
+
+| Gate | 추가 |
+|------|------|
+| 1 | `HumanoidImResAMPVCmdV2(HumanoidImMCP)` 스켈레톤 — single clip, no v_cmd, no dynamics, env yaml = env_im_pnn structure |
+| 2 | phc_3 RunningMeanStd를 ckpt에서 로드 후 freeze |
+| 3 | v_cmd obs 추가 (residual head input에만) |
+| 4 | Multi-clip switch (motion_lib level, no obs override) |
+| 5 | Retime in pre_physics_step |
+| 6 | Residual head random init (ZERO_RESIDUAL flag disable) |
+| 7 | Reward (r_track + r_im, no r_survive) — 학습 시작 |
+
+학습 시작 후 1000 epoch마다 자동 진단 실행. 통과 못하면 즉시 alert.
+
+### 5.6 Gate 1 통과 (2026-05-02 늦은 저녁)
+
+**결과**: V2 task class (empty subclass HumanoidIm) + 새 env yaml (env_im_pnn 파라미터 미러 + full robot config) → phc_3 alone이 **eps_len 1799 step (= 60s 모션 clip 전체)** 까지 walking, avg reward 1695.85.
+
+**v1 vs V2 차이 (확정):**
+
+| 변경 | v1 | V2 | 영향 |
+|------|----|----|------|
+| env yaml 구조 | `env:` block + missing robot params | `env:` block + full robot config | obs dim 36개 차이 (AMP disc) |
+| `has_dof_subset` | 누락 (default False) | True | **AMP discriminator 차원 결정적 영향** |
+| `has_pnn` | False (잘못됨) | True (phc_3에 맞춤) | 영향 미미 (HumanoidIm path) |
+| `cycle_motion` | True | False (env_im_pnn 매칭) | episode 길이 |
+| `terminationHeight` | 0.4 | 0.15 | 영향 미미 (단독으로는 안 풀림) |
+| Task class | HumanoidIm-derived 다양한 override | Empty subclass | obs override 제거 |
+
+**가장 중요한 단일 fix**: `has_dof_subset: True` (robot config에). 이게 없으면 AMP obs가 step당 36 features 더 커지고, phc_3 ckpt와 disc shape mismatch.
+
+**DIAG infra (V2 gate 검증용)**:
+- `PHC_DIAG_DONE_PRINT=1` env var → im_amp_players.py가 매 done 이벤트마다 eps_len 출력 (print_stats 무시)
+- `--small_terrain` 플래그 → run.py:249 episode_length=99999 강제 우회
+- 진단 명령 (Gate 1 검증):
+```bash
+PHC_DIAG_DONE_PRINT=1 python phc/run.py \
+  --task HumanoidImResAMPVCmdV2 \
+  --cfg_env phc/data/cfg/env/env_im_res_amp_vcmd_v2.yaml \
+  --cfg_train phc/data/cfg/learning/im_pnn_big.yaml \
+  --motion_file sample_data/amass_walking_3clips_seamless_60s_v9.pkl \
+  --network_path output/HumanoidIm/phc_3 \
+  --num_envs 4 --test --epoch -1 --no_virtual_display \
+  --headless --small_terrain --episode_length 100
+```
+
 ---
 
 ## 6. 다음 시도 (v2) 개요
