@@ -1,0 +1,123 @@
+# V2 learning config — server (A5000 24 GB) variant.
+# Same arch / hparams as im_res_amp_vcmd_v2.yaml; only buffer sizes and
+# minibatch widths bumped for the 24 GB card / 512-env Stage 2 run.
+# CLI overrides num_envs / episode_length / max_iterations / minibatch_size.
+#
+# Spec: docs/superpowers/specs/2026-05-02-phc-residual-amp-vcmd-v2-design.md
+# Failure analysis: 02_research_dev/260502_res_amp_vcmd_failure_analysis.md
+# All 7 V2 gates verified locally before this server run (commits 56d5378,
+# fb3f791, dc8565b, 7a491c5, 39e399e, 943626a).
+
+params:
+  seed: 0
+
+  algo:
+    name: im_amp_residual
+
+  model:
+    name: amp_residual
+
+  network:
+    name: amp_pnn_residual
+    separate: True
+    discrete: False
+
+    space:
+      continuous:
+        mu_activation: None
+        sigma_activation: None
+        mu_init:
+          name: default
+        sigma_init:
+          name: const_initializer
+          val: -1.0
+        fixed_sigma: True
+        learn_sigma: False
+
+    mlp:
+      units: [1024, 512]
+      activation: silu
+      d2rl: False
+      initializer:
+        name: default
+      regularizer:
+        name: None
+
+    frozen_base:
+      checkpoint: output/HumanoidIm/phc_3/Humanoid.pth
+      mlp_units: [2048, 1536, 1024, 1024, 512, 512]
+      activation: silu
+      num_actors: 3
+
+    residual:
+      input_dims: ["proprio", "v_cmd"]
+      mlp_units: [256, 256]
+      activation: silu
+      sigma_init: -2.5
+      learn_sigma: False
+      v_cmd_dim: 1
+
+    disc:
+      units: [1024, 512]
+      activation: relu
+      initializer:
+        name: default
+
+  load_checkpoint: False
+
+  config:
+    name: ResAMPVCmdV4b
+    env_name: rlgpu
+    multi_gpu: False
+    ppo: True
+    mixed_precision: False
+    normalize_input: True
+    normalize_value: True
+    reward_shaper:
+      scale_value: 1.0
+    normalize_advantage: True
+    gamma: 0.99
+    tau: 0.95
+    learning_rate: 5e-5
+    lr_schedule: constant
+    score_to_win: 20000
+    max_epochs: 20000
+    save_best_after: 50
+    save_frequency: 250
+    print_stats: False
+    save_intermediate: True
+    entropy_coef: 0.0
+    truncate_grads: True
+    grad_norm: 50.0
+    e_clip: 0.2
+    horizon_length: 32
+    minibatch_size: 512       # CLI overrides to 8192 for server (512 envs × 32 horizon = 16384, /8192 = 2 minibatches)
+    mini_epochs: 6
+    critic_coef: 5
+    clip_value: False
+    bounds_loss_coef: 10
+
+    # AMP discriminator hyperparams — server (24 GB A5000) sizes
+    amp_obs_demo_buffer_size: 200000
+    amp_replay_buffer_size: 200000
+    amp_replay_keep_prob: 0.01
+    amp_batch_size: 4096
+    amp_minibatch_size: 4096
+    disc_coef: 5
+    disc_logit_reg: 0.01
+    disc_grad_penalty: 5
+    disc_reward_scale: 2
+    disc_weight_decay: 0.0001
+    normalize_amp_input: True
+
+    # V2 reward decomposition (no r_survive — Goodharting fix)
+    task_reward_w: 0.5
+    disc_reward_w: 0.3
+    im_reward_w: 0.2
+    survive_reward_w: 0.0
+
+    amp_dropout: False
+
+    player:
+      games_num: 50000000
+      determenistic: False
