@@ -110,7 +110,9 @@ class HumanoidImSuit(Humanoid):
     # ----- termination -----
     def _compute_reset(self):
         base_z = self._rigid_body_pos[:, 0, 2]
-        fell = base_z < 0.4
+        # Natural standing LINK_BASE z ≈ 1.20 m (after SuitMotionLib base_z_offset).
+        # Threshold at 0.7 m flags a clear fall while tolerating moderate squat.
+        fell = base_z < 0.7
 
         clip_durations = self._motion_lib.motion_durations[self._motion_ids]
         end_of_clip = (self._motion_elapsed + self._motion_start_times) >= clip_durations
@@ -141,14 +143,15 @@ class HumanoidImSuit(Humanoid):
         self._dof_pos[env_ids] = state["suit_q"]
         self._dof_vel[env_ids] = state["suit_qvel"]
 
-        # Root: yaw-only orientation, lifted slightly so feet don't penetrate
+        # Root: yaw-only orientation. The reference base_xyz already includes the
+        # SuitMotionLib.base_z_offset (~0.30 m), so feet are above the ground.
         yaw = state["base_yaw"]
         cy = torch.cos(yaw / 2)
         sy = torch.sin(yaw / 2)
         zero = torch.zeros_like(cy)
         root_quat = torch.stack([zero, zero, sy, cy], dim=-1)  # xyzw
         root_pos = state["base_xyz"].clone()
-        root_pos[:, 2] += 0.05
+        root_pos[:, 2] += 0.05  # small extra margin so a stray penetration doesn't kick the sim
 
         self._humanoid_root_states[env_ids, 0:3] = root_pos
         self._humanoid_root_states[env_ids, 3:7] = root_quat

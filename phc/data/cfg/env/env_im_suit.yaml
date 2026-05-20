@@ -25,8 +25,8 @@ enableEarlyTermination: True
 terminationDistance: 1.0
 
 # PD gains consumed by humanoid.py walkonsuit branch
-pd_kp: 100.0
-pd_kd: 5.0
+pd_kp: 500.0
+pd_kd: 20.0
 
 # Defaults required by base Humanoid.__init__
 kp_scale: 1.0

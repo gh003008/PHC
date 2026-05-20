@@ -1203,8 +1203,8 @@ class Humanoid(BaseTask):
             dof_prop['damping'] *= pd_scale * self._kd_scale
             
             if self.humanoid_type in ['h1', 'g1', 'walkonsuit']:
-                dof_prop['stiffness'] = self.p_gains.numpy()
-                dof_prop['damping'] = self.d_gains.numpy()
+                dof_prop['stiffness'] = self.p_gains.detach().cpu().numpy()
+                dof_prop['damping'] = self.d_gains.detach().cpu().numpy()
 
         elif self.control_mode in ["pd", "force"]:
             dof_prop["driveMode"] = gymapi.DOF_MODE_EFFORT
@@ -1213,6 +1213,12 @@ class Humanoid(BaseTask):
         
         
         
+
+        # WalkOn Suit: rely on the actor-level col_filter (already set at
+        # _build_env start when has_self_collision=False) and the URDF's
+        # natural collision behavior. With the SuitMotionLib z-offset placing
+        # LINK_BASE at ~1.2 m, links no longer overlap-penetrate at spawn so
+        # we don't need per-body filter overrides here.
 
         if self.humanoid_type in ['h1', 'g1', "smpl", "smplh", "smplx"] and self._has_self_collision:
             # compliance_vals = [0.1] * 24

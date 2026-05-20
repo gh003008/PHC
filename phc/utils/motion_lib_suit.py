@@ -19,9 +19,18 @@ class SuitMotionLib:
         "JOINT_RA_INV", "JOINT_RA_PLA_foot",
     ]
 
-    def __init__(self, pkl_path: str, device: str = "cuda:0"):
+    def __init__(self, pkl_path: str, device: str = "cuda:0", base_z_offset: float = 0.30):
+        """
+        base_z_offset: constant z-shift applied to every clip's base_xyz. The
+        retargeted base_xyz tracks the SMPL pelvis (~0.9 m). The WalkOn Suit
+        URDF's LINK_BASE sits ~1.02 m above the foot bottoms, so an unmodified
+        reference puts the suit's feet ~12 cm below the ground at spawn. A
+        0.30 m offset lifts LINK_BASE to ~1.20 m, leaving feet ~0.18 m above
+        the ground — consistent with the visually verified default pose.
+        """
         self.device = torch.device(device)
-        print(f"[SuitMotionLib] loading {pkl_path}")
+        self.base_z_offset = float(base_z_offset)
+        print(f"[SuitMotionLib] loading {pkl_path}  (base_z_offset={self.base_z_offset:+.3f} m)")
         d = joblib.load(pkl_path)
         names = list(d.keys())
         self.motion_names = names
@@ -42,6 +51,9 @@ class SuitMotionLib:
 
         self.suit_q = torch.from_numpy(np.concatenate(suit_q_all, 0).astype(np.float32)).to(self.device)
         self.base_xyz = torch.from_numpy(np.concatenate(base_xyz_all, 0).astype(np.float32)).to(self.device)
+        # Apply the constant z-offset so reference base sits where the suit's
+        # LINK_BASE actually stands (rather than at SMPL-pelvis height).
+        self.base_xyz[:, 2] += self.base_z_offset
         self.base_yaw = torch.from_numpy(np.concatenate(base_yaw_all, 0).astype(np.float32)).to(self.device)
         self.offsets = torch.tensor(offsets, dtype=torch.long, device=self.device)
         self.motion_lengths = self.offsets[1:] - self.offsets[:-1]
