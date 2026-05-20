@@ -46,6 +46,7 @@ from phc.env.tasks.humanoid_im_res_amp_vcmd_v2 import HumanoidImResAMPVCmdV2
 from phc.env.tasks.humanoid_im_res_amp_vcmd_v3 import HumanoidImResAMPVCmdV3
 from phc.env.tasks.humanoid_im_res_amp_vcmd_v4b import HumanoidImResAMPVCmdV4b
 from phc.env.tasks.humanoid_im_mpl import HumanoidImMPL
+from phc.env.tasks.humanoid_im_suit import HumanoidImSuit
 
 
 from isaacgym import rlgpu

@@ -1,0 +1,45 @@
+task: HumanoidImSuit
+motion_file: "sample_data/suit_reference_lib_v1.pkl"
+num_envs: 512
+env_spacing: 5
+episode_length: 300
+is_flag_run: False
+enable_debug_vis: False
+
+self_obs_v: 1
+
+local_root_obs: True
+root_height_obs: True
+
+# 13 bodies — use feet & base. ankle_link == LINK_L_ANK (one below LINK_L_FOOT)
+key_bodies: ["LINK_L_FOOT", "LINK_R_FOOT", "LINK_BASE"]
+contact_bodies: ["LINK_L_FOOT", "LINK_R_FOOT"]
+reset_bodies: [
+  'LINK_BASE',
+  'LINK_L_BASE', 'LINK_L_HIP', 'LINK_L_THIGH', 'LINK_L_SHANK', 'LINK_L_ANK', 'LINK_L_FOOT',
+  'LINK_R_BASE', 'LINK_R_HIP', 'LINK_R_THIGH', 'LINK_R_SHANK', 'LINK_R_ANK', 'LINK_R_FOOT',
+]
+
+terminationHeight: 0.4   # base z fall threshold matches HumanoidImSuit._compute_reset
+enableEarlyTermination: True
+terminationDistance: 1.0
+
+# PD gains consumed by humanoid.py walkonsuit branch
+pd_kp: 100.0
+pd_kd: 5.0
+
+# Defaults required by base Humanoid.__init__
+kp_scale: 1.0
+kd_scale: 1.0
+default_humanoid_mass: 80.0
+real_weight: True
+power_reward: False
+
+# Stubs for things the base class probes (not used by walkonsuit, but cfg-read)
+masterfoot: False
+freeze_toe: False
+
+plane:
+  staticFriction: 1.0
+  dynamicFriction: 1.0
+  restitution: 0.0
