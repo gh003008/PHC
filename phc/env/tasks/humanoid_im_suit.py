@@ -159,3 +159,8 @@ class HumanoidImSuit(Humanoid):
     def post_physics_step(self):
         self._motion_elapsed += self.dt
         super().post_physics_step()
+
+    # Humanoid._physics_step calls self.render(i=0) but Humanoid.render
+    # takes only sync_frame_time. HumanoidIm overrides this same way.
+    def render(self, sync_frame_time=False, i=0):
+        super().render(sync_frame_time)
