@@ -44,6 +44,13 @@ class HumanoidImSuit(Humanoid):
     def get_obs_size(self):
         return self.get_self_obs_size() + self._NUM_TARGET_OBS
 
+    # VecTaskPythonWrapper probes these even for non-AMP tasks.
+    def get_num_amp_obs(self):
+        return 0
+
+    def get_num_enc_amp_obs(self):
+        return 0
+
     # ----- observation -----
     def _compute_observations(self, env_ids=None):
         if env_ids is None:
