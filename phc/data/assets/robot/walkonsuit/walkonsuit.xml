@@ -1,0 +1,29 @@
+<?xml version="1.0" ?>
+<mujoco model="walkonsuit">
+  <worldbody>
+    <body name="LINK_BASE" pos="0 0 0">
+      <body name="LINK_R_BASE" pos="0.000000 -0.115000 0.000000">
+        <body name="LINK_R_HIP" pos="-0.246000 -0.155000 0.001800">
+          <body name="LINK_R_THIGH" pos="0.192800 0.031910 0.000000">
+            <body name="LINK_R_SHANK" pos="0.024985 -0.430720 -0.009000">
+              <body name="LINK_R_ANK" pos="0.140410 -0.303250 0.121660">
+                <body name="LINK_R_FOOT" pos="-0.005000 0.000000 -0.148000"/>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="LINK_L_BASE" pos="0.000000 0.115000 0.000000">
+        <body name="LINK_L_HIP" pos="-0.246000 0.155000 0.001800">
+          <body name="LINK_L_THIGH" pos="0.192800 -0.031910 0.000000">
+            <body name="LINK_L_SHANK" pos="-0.024985 -0.430720 -0.009000">
+              <body name="LINK_L_ANK" pos="-0.140410 -0.303250 0.121660">
+                <body name="LINK_L_FOOT" pos="0.005000 0.000000 -0.148000"/>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>

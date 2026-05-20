@@ -1,0 +1,65 @@
+humanoid_type: walkonsuit
+bias_offset: False
+has_self_collision: False
+has_mesh: True
+has_jt_limit: True
+has_dof_subset: False
+has_upright_start: True
+has_smpl_pd_offset: False
+remove_toe: False
+motion_sym_loss: False
+sym_loss_coef: 1
+big_ankle: False
+
+has_shape_obs: false
+has_shape_obs_disc: false
+has_shape_variation: False
+
+masterfoot: False
+freeze_toe: false
+freeze_hand: False
+box_body: False
+real_weight: True
+real_weight_porpotion_capsules: False
+real_weight_porpotion_boxes: False
+
+
+# 13 rigid bodies in the WalkOn Suit URDF
+body_names: [
+  'LINK_BASE',
+  'LINK_L_BASE', 'LINK_L_HIP', 'LINK_L_THIGH', 'LINK_L_SHANK', 'LINK_L_ANK', 'LINK_L_FOOT',
+  'LINK_R_BASE', 'LINK_R_HIP', 'LINK_R_THIGH', 'LINK_R_SHANK', 'LINK_R_ANK', 'LINK_R_FOOT',
+]
+
+# Group links by limb for any weighted observation features that need it
+limb_weight_group:
+  - ['LINK_L_BASE', 'LINK_L_HIP', 'LINK_L_THIGH', 'LINK_L_SHANK', 'LINK_L_ANK', 'LINK_L_FOOT']
+  - ['LINK_R_BASE', 'LINK_R_HIP', 'LINK_R_THIGH', 'LINK_R_SHANK', 'LINK_R_ANK', 'LINK_R_FOOT']
+  - ['LINK_BASE']
+
+# 12 actuated DoFs. Order matches our retargeting JOINT_ORDER and SuitMotionLib.
+dof_names: [
+  'JOINT_LH_ABD', 'JOINT_LH_ROT', 'JOINT_LH_EXT', 'JOINT_LK_EXT', 'JOINT_LA_INV', 'JOINT_LA_PLA_foot',
+  'JOINT_RH_ABD', 'JOINT_RH_ROT', 'JOINT_RH_EXT', 'JOINT_RK_EXT', 'JOINT_RA_INV', 'JOINT_RA_PLA_foot',
+]
+
+right_foot_name: 'LINK_R_FOOT'
+left_foot_name:  'LINK_L_FOOT'
+
+
+sim_with_urdf: True
+asset:
+  assetRoot: "./"
+  assetFileName: "phc/data/assets/robot/walkonsuit/walkonsuit.xml"
+  urdfFileName:  "phc/data/assets/robot/walkonsuit/walkonsuit.urdf"
+
+# No extend_config needed — Suit has no extra rigid bodies beyond URDF.
+extend_config: []
+
+base_link: "LINK_BASE"
+
+# joint_matches and smpl_pose_modifier are needed only when retargeting SMPL
+# motion onto this robot inside PHC. We do retargeting offline via
+# retarget/l1_ik_amass_to_suit.py, so leave these empty.
+joint_matches: []
+smpl_pose_modifier: []
