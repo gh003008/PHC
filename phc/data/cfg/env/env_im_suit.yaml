@@ -1,5 +1,11 @@
 task: HumanoidImSuit
-motion_file: "sample_data/suit_reference_lib_v1.pkl"
+motion_file: "sample_data/suit_reference_lib_v2.pkl"
+# Reference pkl encodes per-frame foot-lift correction (feet ~0.03 m above
+# ground in base_xyz). No further runtime offset needed.
+motion_base_z_offset: 0.0
+# Single-clip curriculum: restrict to clip 0 for initial PPO training. Set
+# to -1 to use the full library once the policy can hold a single clip.
+single_clip_idx: 0
 num_envs: 512
 env_spacing: 5
 episode_length: 300

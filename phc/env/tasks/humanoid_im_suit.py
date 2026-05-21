@@ -30,10 +30,16 @@ class HumanoidImSuit(Humanoid):
 
     def __init__(self, cfg, sim_params, physics_engine, device_type, device_id, headless):
         self._motion_file = cfg["env"]["motion_file"]
+        self._motion_single_clip_idx = int(cfg["env"].get("single_clip_idx", -1))
+        self._motion_base_z_offset = float(cfg["env"].get("motion_base_z_offset", 0.0))
         super().__init__(cfg=cfg, sim_params=sim_params, physics_engine=physics_engine,
                          device_type=device_type, device_id=device_id, headless=headless)
 
-        self._motion_lib = SuitMotionLib(self._motion_file, device=self.device)
+        self._motion_lib = SuitMotionLib(
+            self._motion_file, device=self.device,
+            base_z_offset=self._motion_base_z_offset,
+            single_clip_idx=self._motion_single_clip_idx,
+        )
         self._motion_ids = self._motion_lib.sample_motions(self.num_envs)
         self._motion_start_times = self._motion_lib.sample_time(self._motion_ids)
         self._motion_elapsed = torch.zeros(self.num_envs, device=self.device)
@@ -132,7 +138,14 @@ class HumanoidImSuit(Humanoid):
             return
 
         self._motion_ids[env_ids] = self._motion_lib.sample_motions(n)
-        self._motion_start_times[env_ids] = self._motion_lib.sample_time(self._motion_ids[env_ids])
+        # Single-clip curriculum: always start at frame 0 of the clip (typically
+        # a static standing pose). Avoids spawning in the middle of a stride
+        # where the reference has forward base velocity, which the policy
+        # cannot exploit without contact.
+        if self._motion_single_clip_idx >= 0:
+            self._motion_start_times[env_ids] = 0.0
+        else:
+            self._motion_start_times[env_ids] = self._motion_lib.sample_time(self._motion_ids[env_ids])
         self._motion_elapsed[env_ids] = 0.0
 
         state = self._motion_lib.get_motion_state(
@@ -143,19 +156,22 @@ class HumanoidImSuit(Humanoid):
         self._dof_pos[env_ids] = state["suit_q"]
         self._dof_vel[env_ids] = state["suit_qvel"]
 
-        # Root: yaw-only orientation. The reference base_xyz already includes the
-        # SuitMotionLib.base_z_offset (~0.30 m), so feet are above the ground.
+        # Root: yaw-only orientation. The reference base_xyz already encodes a
+        # per-frame foot-lift correction (v2 pkl) so feet sit ~3 cm above
+        # ground at spawn; no extra RSI lift needed.
         yaw = state["base_yaw"]
         cy = torch.cos(yaw / 2)
         sy = torch.sin(yaw / 2)
         zero = torch.zeros_like(cy)
         root_quat = torch.stack([zero, zero, sy, cy], dim=-1)  # xyzw
         root_pos = state["base_xyz"].clone()
-        root_pos[:, 2] += 0.05  # small extra margin so a stray penetration doesn't kick the sim
 
         self._humanoid_root_states[env_ids, 0:3] = root_pos
         self._humanoid_root_states[env_ids, 3:7] = root_quat
-        self._humanoid_root_states[env_ids, 7:10] = state["base_xyz_vel"]
+        # Force zero base velocity at spawn. Reference base_xyz_vel from
+        # walking clips can have ~1 m/s forward momentum, which carries the
+        # robot through the air before feet establish ground contact.
+        self._humanoid_root_states[env_ids, 7:10] = 0.0
         self._humanoid_root_states[env_ids, 10:13] = 0.0
 
     # ----- step bookkeeping -----

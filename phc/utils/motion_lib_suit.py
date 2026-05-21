@@ -19,20 +19,32 @@ class SuitMotionLib:
         "JOINT_RA_INV", "JOINT_RA_PLA_foot",
     ]
 
-    def __init__(self, pkl_path: str, device: str = "cuda:0", base_z_offset: float = 0.30):
+    def __init__(self, pkl_path: str, device: str = "cuda:0",
+                 base_z_offset: float = 0.0, single_clip_idx: int = -1):
         """
-        base_z_offset: constant z-shift applied to every clip's base_xyz. The
-        retargeted base_xyz tracks the SMPL pelvis (~0.9 m). The WalkOn Suit
-        URDF's LINK_BASE sits ~1.02 m above the foot bottoms, so an unmodified
-        reference puts the suit's feet ~12 cm below the ground at spawn. A
-        0.30 m offset lifts LINK_BASE to ~1.20 m, leaving feet ~0.18 m above
-        the ground — consistent with the visually verified default pose.
+        base_z_offset: constant z-shift added to every clip's base_xyz on top
+            of whatever is already baked into the pkl. v2 pkl already encodes
+            per-frame foot-lift correction, so default is 0.
+        single_clip_idx: if >= 0, restrict the library to that single clip.
+            Useful for debugging / curriculum (PPO alone struggles with 50
+            heterogeneous clips; one clip is much easier).
         """
         self.device = torch.device(device)
         self.base_z_offset = float(base_z_offset)
-        print(f"[SuitMotionLib] loading {pkl_path}  (base_z_offset={self.base_z_offset:+.3f} m)")
+        self.single_clip_idx = int(single_clip_idx)
+        print(f"[SuitMotionLib] loading {pkl_path}  "
+              f"(base_z_offset={self.base_z_offset:+.3f} m, single_clip_idx={self.single_clip_idx})")
         d = joblib.load(pkl_path)
         names = list(d.keys())
+
+        if self.single_clip_idx >= 0:
+            if self.single_clip_idx >= len(names):
+                raise ValueError(f"single_clip_idx={self.single_clip_idx} out of range "
+                                  f"(library has {len(names)} clips)")
+            chosen = names[self.single_clip_idx]
+            print(f"[SuitMotionLib] restricting to clip {self.single_clip_idx}: {chosen}")
+            names = [chosen]
+            d = {chosen: d[chosen]}
         self.motion_names = names
 
         self.fps = float(d[names[0]].get("fps", 30.0))
