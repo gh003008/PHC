@@ -32,6 +32,9 @@ class HumanoidImSuit(Humanoid):
         self._motion_file = cfg["env"]["motion_file"]
         self._motion_single_clip_idx = int(cfg["env"].get("single_clip_idx", -1))
         self._motion_base_z_offset = float(cfg["env"].get("motion_base_z_offset", 0.0))
+        # ---- AMP config (read BEFORE super().__init__ so get_num_amp_obs is set) ----
+        self._num_amp_obs_steps = int(cfg["env"].get("numAMPObsSteps", 2))
+        self._num_amp_obs_per_step = SuitMotionLib.AMP_FEATURES_PER_STEP
         super().__init__(cfg=cfg, sim_params=sim_params, physics_engine=physics_engine,
                          device_type=device_type, device_id=device_id, headless=headless)
 
@@ -44,18 +47,66 @@ class HumanoidImSuit(Humanoid):
         self._motion_start_times = self._motion_lib.sample_time(self._motion_ids)
         self._motion_elapsed = torch.zeros(self.num_envs, device=self.device)
 
+        # ---- AMP buffers ----
+        self._amp_obs_buf = torch.zeros(
+            (self.num_envs, self._num_amp_obs_steps, self._num_amp_obs_per_step),
+            device=self.device, dtype=torch.float,
+        )
+        self._amp_obs_demo_buf = None  # lazily allocated by PHC AMPAgent
+
+        # ---- Stub attributes AMPAgent expects on the task ----
+        self.temp_running_mean = False
+        self.kin_lr = 0.0
+        self.fitting = False
+        self.has_task = False
+        # AMPAgent logs reward_raw[0..4]; allocate 5 columns to avoid IndexError.
+        # Slot 0 used for our composite reward; 1..4 left at 0.
+        self.reward_raw = torch.zeros((self.num_envs, 5), device=self.device)
+
     # ----- obs sizing -----
     # Base class calls get_obs_size() BEFORE super().__init__ sets up obs_buf,
     # so include target features here.
     def get_obs_size(self):
         return self.get_self_obs_size() + self._NUM_TARGET_OBS
 
-    # VecTaskPythonWrapper probes these even for non-AMP tasks.
     def get_num_amp_obs(self):
-        return 0
+        return self._num_amp_obs_steps * self._num_amp_obs_per_step
 
     def get_num_enc_amp_obs(self):
+        return self.get_num_amp_obs()
+
+    def get_task_obs_size(self):
         return 0
+
+    def get_task_obs_size_detail(self):
+        return {}
+
+    # ----- AMP -----
+    def _compute_current_amp_features(self):
+        """Compute the current step's AMP features from sim state. (N, F_per_step)."""
+        dof_pos = self._dof_pos
+        dof_vel = self._dof_vel
+        base_z = self._rigid_body_pos[:, 0, 2:3]
+        # base lin vel in heading frame
+        v = self._rigid_body_vel[:, 0]
+        qx, qy, qz, qw = self._rigid_body_rot[:, 0].unbind(-1)
+        siny_cosp = 2.0 * (qw * qz + qx * qy)
+        cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
+        yaw = torch.atan2(siny_cosp, cosy_cosp)
+        c, s = torch.cos(-yaw), torch.sin(-yaw)
+        vx = v[:, 0] * c - v[:, 1] * s
+        vy = v[:, 0] * s + v[:, 1] * c
+        base_lin_vel_h = torch.stack([vx, vy, v[:, 2]], dim=-1)
+        return torch.cat([dof_pos, dof_vel, base_z, base_lin_vel_h], dim=-1)
+
+    def _update_amp_obs(self):
+        # Shift history: amp_obs_buf[:, 1] <- amp_obs_buf[:, 0], then write current.
+        if self._num_amp_obs_steps > 1:
+            self._amp_obs_buf[:, 1:] = self._amp_obs_buf[:, :-1].clone()
+        self._amp_obs_buf[:, 0] = self._compute_current_amp_features()
+
+    def fetch_amp_obs_demo(self, num_samples):
+        return self._motion_lib.sample_amp_obs_demo(num_samples, self._num_amp_obs_steps)
 
     # ----- observation -----
     def _compute_observations(self, env_ids=None):
@@ -111,7 +162,10 @@ class HumanoidImSuit(Humanoid):
 
         r_alive = torch.full_like(r_q, 0.05)
 
-        self.rew_buf[:] = r_q + r_qv + r_h + r_v + r_alive
+        total = r_q + r_qv + r_h + r_v + r_alive
+        self.rew_buf[:] = total
+        # Slot 0 = composite total; slots 1..4 reserved for AMPAgent logging.
+        self.reward_raw[:, 0] = total
 
     # ----- termination -----
     def _compute_reset(self):
@@ -178,6 +232,9 @@ class HumanoidImSuit(Humanoid):
     def post_physics_step(self):
         self._motion_elapsed += self.dt
         super().post_physics_step()
+        # Compute current AMP features, push into history buffer, expose in extras.
+        self._update_amp_obs()
+        self.extras["amp_obs"] = self._amp_obs_buf.view(-1, self.get_num_amp_obs())
 
     # Humanoid._physics_step calls self.render(i=0) but Humanoid.render
     # takes only sync_frame_time. HumanoidIm overrides this same way.

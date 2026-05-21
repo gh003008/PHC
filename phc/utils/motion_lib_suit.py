@@ -116,3 +116,43 @@ class SuitMotionLib:
             "base_yaw":     (1 - a) * self.base_yaw[i0]        + a * self.base_yaw[i1],
             "base_xyz_vel": (1 - a_vec) * self.base_xyz_vel[i0] + a_vec * self.base_xyz_vel[i1],
         }
+
+    # --- AMP ---
+    AMP_FEATURES_PER_STEP = 12 + 12 + 1 + 3  # dof_q + dof_qvel + base_z + base_lin_vel
+
+    def _amp_features_at_time(self, motion_ids: torch.Tensor, motion_times: torch.Tensor) -> torch.Tensor:
+        """Return (B, AMP_FEATURES_PER_STEP) features for the given (id, time) pairs."""
+        s = self.get_motion_state(motion_ids, motion_times)
+        # Express base lin vel in heading frame (rotate by -base_yaw around z)
+        yaw = s["base_yaw"]
+        c, ss = torch.cos(-yaw), torch.sin(-yaw)
+        vx = s["base_xyz_vel"][:, 0] * c - s["base_xyz_vel"][:, 1] * ss
+        vy = s["base_xyz_vel"][:, 0] * ss + s["base_xyz_vel"][:, 1] * c
+        vz = s["base_xyz_vel"][:, 2]
+        base_lin_vel_heading = torch.stack([vx, vy, vz], dim=-1)  # (B, 3)
+        base_z = s["base_xyz"][:, 2:3]  # (B, 1)
+        return torch.cat([s["suit_q"], s["suit_qvel"], base_z, base_lin_vel_heading], dim=-1)
+
+    def get_amp_obs_demo(self, motion_ids: torch.Tensor, motion_times0: torch.Tensor,
+                         num_steps: int = 2) -> torch.Tensor:
+        """Return (B, num_steps * AMP_FEATURES_PER_STEP) features.
+
+        Step 0 is at `motion_times0`, step k>0 is at `motion_times0 - k*dt`.
+        Mirrors HumanoidAMP.build_amp_obs_demo conventions.
+        """
+        dt = 1.0 / self.fps
+        feats = []
+        for k in range(num_steps):
+            t = (motion_times0 - k * dt).clamp(min=0.0)
+            feats.append(self._amp_features_at_time(motion_ids, t))
+        return torch.cat(feats, dim=-1)
+
+    def sample_amp_obs_demo(self, n: int, num_steps: int = 2) -> torch.Tensor:
+        """Sample (n, num_steps * AMP_FEATURES_PER_STEP) features at random motion times."""
+        ids = self.sample_motions(n)
+        # Sample uniformly across the clip, but leave room for (num_steps-1) past frames
+        dt = 1.0 / self.fps
+        max_t = self.motion_durations[ids] - (num_steps - 1) * dt
+        max_t = max_t.clamp(min=0.0)
+        t0 = max_t * torch.rand_like(max_t) + (num_steps - 1) * dt
+        return self.get_amp_obs_demo(ids, t0, num_steps)
